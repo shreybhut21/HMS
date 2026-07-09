@@ -1,34 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Calendar, Users, FileText, Pill, Clock, Activity, 
   ChevronRight, Plus, Eye, CheckCircle, X, FilePlus, 
   User, ActivitySquare, AlertCircle
 } from 'lucide-react';
-
-// --- DUMMY DATA ---
-const dummyStats = {
-  todayAppointments: 0,
-  seenToday: 0,
-  upcoming: 0,
-  pendingPrescriptions: 0
-};
-
-const dummyAppointments: any[] = [];
-const dummyQueue: any[] = [];
-const dummyRecent: any[] = [];
-
-const dummyPatientDetails = {
-  name: 'Priya Shah',
-  age: 28,
-  gender: 'Female',
-  bloodGroup: 'O+',
-  history: 'No major illnesses. Mild asthma in childhood.',
-  allergies: 'Penicillin, Peanuts',
-  medications: 'None currently',
-  previousVisits: [
-    { date: 'Jan 15, 2026', doctor: 'Dr. Amit Shah', reason: 'Annual Checkup' }
-  ]
-};
 
 // --- COMPONENTS ---
 
@@ -36,6 +11,61 @@ export function DoctorDashboardTab({ user }: { user: any }) {
   const [showProfileDrawer, setShowProfileDrawer] = useState(false);
   const [showConsultationModal, setShowConsultationModal] = useState(false);
   const [selectedPatient, setSelectedPatient] = useState<any>(null);
+  const [queue, setQueue] = useState({ current_token: 0, last_issued_token: 0 });
+
+  const [stats, setStats] = useState({ todayAppointments: 0, seenToday: 0, upcoming: 0, pendingPrescriptions: 0 });
+  const [appointments, setAppointments] = useState<any[]>([]);
+  const [recentPatients, setRecentPatients] = useState<any[]>([]);
+
+  const fetchDashboardData = async () => {
+    try {
+      const token = localStorage.getItem('medicare_token');
+      const res = await fetch('http://localhost:5000/api/hospital/dashboard', { headers: { 'Authorization': `Bearer ${token}` } });
+      if (res.ok) {
+        const data = await res.json();
+        setStats({
+          todayAppointments: data.stats.todayAppointments || 0,
+          seenToday: data.stats.pendingRequests || 0, // Using pending requests as placeholder
+          upcoming: data.stats.totalPatients || 0,
+          pendingPrescriptions: 0
+        });
+        setAppointments(data.todaySchedule || []);
+        setRecentPatients(data.recentPatients || []);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const fetchQueue = async () => {
+    try {
+      const token = localStorage.getItem('medicare_token');
+      const res = await fetch('http://localhost:5000/api/hospital/queue/me', { headers: { 'Authorization': `Bearer ${token}` } });
+      if (res.ok) setQueue(await res.json());
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  useEffect(() => {
+    fetchDashboardData();
+    fetchQueue();
+    const interval = setInterval(fetchQueue, 10000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const handleNextPatient = async () => {
+    try {
+      const token = localStorage.getItem('medicare_token');
+      const res = await fetch('http://localhost:5000/api/hospital/next-token', { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } });
+      if (res.ok) {
+        const data = await res.json();
+        setQueue(prev => ({ ...prev, current_token: data.next_token }));
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
 
   const openProfile = (patient: any) => {
     setSelectedPatient(patient);
@@ -72,19 +102,19 @@ export function DoctorDashboardTab({ user }: { user: any }) {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1.5rem' }}>
         <div className="card" style={{ padding: '1.5rem', display: 'flex', alignItems: 'center', gap: '1rem', transition: 'transform 0.2s', cursor: 'pointer' }} onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-4px)'} onMouseLeave={e => e.currentTarget.style.transform = 'none'}>
           <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: '#DBEAFE', color: '#2563EB', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Calendar size={24} /></div>
-          <div><p style={{ fontSize: '0.875rem', color: 'var(--gray-500)', fontWeight: 500 }}>Today's Appts</p><h3 style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--gray-900)' }}>{dummyStats.todayAppointments}</h3></div>
+          <div><p style={{ fontSize: '0.875rem', color: 'var(--gray-500)', fontWeight: 500 }}>Today's Appts</p><h3 style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--gray-900)' }}>{stats.todayAppointments}</h3></div>
         </div>
         <div className="card" style={{ padding: '1.5rem', display: 'flex', alignItems: 'center', gap: '1rem', transition: 'transform 0.2s', cursor: 'pointer' }} onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-4px)'} onMouseLeave={e => e.currentTarget.style.transform = 'none'}>
           <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: '#D1FAE5', color: '#10B981', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Users size={24} /></div>
-          <div><p style={{ fontSize: '0.875rem', color: 'var(--gray-500)', fontWeight: 500 }}>Patients Seen</p><h3 style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--gray-900)' }}>{dummyStats.seenToday}</h3></div>
+          <div><p style={{ fontSize: '0.875rem', color: 'var(--gray-500)', fontWeight: 500 }}>Patients Seen</p><h3 style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--gray-900)' }}>{stats.seenToday}</h3></div>
         </div>
         <div className="card" style={{ padding: '1.5rem', display: 'flex', alignItems: 'center', gap: '1rem', transition: 'transform 0.2s', cursor: 'pointer' }} onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-4px)'} onMouseLeave={e => e.currentTarget.style.transform = 'none'}>
           <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: '#FEF3C7', color: '#D97706', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Clock size={24} /></div>
-          <div><p style={{ fontSize: '0.875rem', color: 'var(--gray-500)', fontWeight: 500 }}>Upcoming</p><h3 style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--gray-900)' }}>{dummyStats.upcoming}</h3></div>
+          <div><p style={{ fontSize: '0.875rem', color: 'var(--gray-500)', fontWeight: 500 }}>Upcoming</p><h3 style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--gray-900)' }}>{stats.upcoming}</h3></div>
         </div>
         <div className="card" style={{ padding: '1.5rem', display: 'flex', alignItems: 'center', gap: '1rem', transition: 'transform 0.2s', cursor: 'pointer' }} onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-4px)'} onMouseLeave={e => e.currentTarget.style.transform = 'none'}>
           <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: '#F3E8FF', color: '#9333EA', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Pill size={24} /></div>
-          <div><p style={{ fontSize: '0.875rem', color: 'var(--gray-500)', fontWeight: 500 }}>Pending Rx</p><h3 style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--gray-900)' }}>{dummyStats.pendingPrescriptions}</h3></div>
+          <div><p style={{ fontSize: '0.875rem', color: 'var(--gray-500)', fontWeight: 500 }}>Pending Rx</p><h3 style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--gray-900)' }}>{stats.pendingPrescriptions}</h3></div>
         </div>
       </div>
 
@@ -101,7 +131,7 @@ export function DoctorDashboardTab({ user }: { user: any }) {
             </div>
             
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              {dummyAppointments.map(apt => (
+              {appointments.map(apt => (
                 <div key={apt.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '1.25rem', border: '1px solid var(--gray-200)', borderRadius: 'var(--radius-lg)', background: apt.status === 'In Progress' ? 'var(--primary-50)' : '#fff', transition: 'box-shadow 0.2s' }} onMouseEnter={e => e.currentTarget.style.boxShadow = 'var(--shadow)'} onMouseLeave={e => e.currentTarget.style.boxShadow = 'none'}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
                     <div style={{ textAlign: 'center', paddingRight: '1.5rem', borderRight: '1px solid var(--gray-200)' }}>
@@ -131,37 +161,30 @@ export function DoctorDashboardTab({ user }: { user: any }) {
             </div>
           </div>
 
-          {/* PATIENT QUEUE */}
-          <div className="card" style={{ padding: '1.5rem' }}>
-            <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--gray-900)', marginBottom: '1.5rem' }}>Patient Queue</h2>
-            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-              <thead>
-                <tr style={{ borderBottom: '1px solid var(--gray-200)', color: 'var(--gray-500)', fontSize: '0.875rem' }}>
-                  <th style={{ padding: '1rem 0.5rem', fontWeight: 600 }}>Token</th>
-                  <th style={{ padding: '1rem 0.5rem', fontWeight: 600 }}>Patient Name</th>
-                  <th style={{ padding: '1rem 0.5rem', fontWeight: 600 }}>Arrival</th>
-                  <th style={{ padding: '1rem 0.5rem', fontWeight: 600 }}>Status</th>
-                  <th style={{ padding: '1rem 0.5rem', fontWeight: 600, textAlign: 'right' }}>Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {dummyQueue.map(q => (
-                  <tr key={q.token} style={{ borderBottom: '1px solid var(--gray-100)' }}>
-                    <td style={{ padding: '1rem 0.5rem', fontWeight: 700, color: 'var(--primary-600)' }}>{q.token}</td>
-                    <td style={{ padding: '1rem 0.5rem', fontWeight: 500, color: 'var(--gray-900)' }}>{q.patientName}</td>
-                    <td style={{ padding: '1rem 0.5rem', color: 'var(--gray-500)' }}>{q.arrival}</td>
-                    <td style={{ padding: '1rem 0.5rem' }}>
-                      <span style={{ padding: '0.25rem 0.75rem', borderRadius: '999px', fontSize: '0.75rem', fontWeight: 600, background: '#FEF3C7', color: '#D97706' }}>
-                        {q.status}
-                      </span>
-                    </td>
-                    <td style={{ padding: '1rem 0.5rem', textAlign: 'right' }}>
-                      <button className="btn-secondary" style={{ padding: '0.4rem 0.75rem', fontSize: '0.75rem' }}>Call Next</button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          {/* LIVE QUEUE STATUS */}
+          <div className="card" style={{ padding: '2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--primary-600)', color: 'white' }}>
+            <div>
+              <p style={{ fontSize: '0.875rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', opacity: 0.9 }}>Live Queue Status</p>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.75rem', marginTop: '0.5rem' }}>
+                <span style={{ fontSize: '1rem', opacity: 0.8 }}>Now Serving:</span>
+                <h2 style={{ fontSize: '3rem', fontWeight: 700, lineHeight: 1 }}>#{queue.current_token}</h2>
+              </div>
+              <p style={{ fontSize: '0.875rem', opacity: 0.8, marginTop: '0.5rem' }}>Total Tokens Issued Today: {queue.last_issued_token}</p>
+            </div>
+            
+            <button 
+              onClick={handleNextPatient}
+              disabled={queue.current_token >= queue.last_issued_token}
+              style={{ 
+                padding: '1rem 2rem', fontSize: '1.125rem', fontWeight: 600, 
+                background: queue.current_token >= queue.last_issued_token ? 'rgba(255,255,255,0.2)' : 'white', 
+                color: queue.current_token >= queue.last_issued_token ? 'rgba(255,255,255,0.5)' : 'var(--primary-700)', 
+                border: 'none', borderRadius: 'var(--radius)', cursor: queue.current_token >= queue.last_issued_token ? 'not-allowed' : 'pointer',
+                display: 'flex', alignItems: 'center', gap: '0.5rem', boxShadow: '0 4px 15px rgba(0,0,0,0.1)'
+              }}
+            >
+              <User size={20} /> Call Next Patient
+            </button>
           </div>
 
           {/* RECENT PATIENTS */}
@@ -177,7 +200,7 @@ export function DoctorDashboardTab({ user }: { user: any }) {
                 </tr>
               </thead>
               <tbody>
-                {dummyRecent.map(r => (
+                {recentPatients.map(r => (
                   <tr key={r.id} style={{ borderBottom: '1px solid var(--gray-100)' }}>
                     <td style={{ padding: '1rem 0.5rem', fontWeight: 500, color: 'var(--gray-900)' }}>{r.name}</td>
                     <td style={{ padding: '1rem 0.5rem', color: 'var(--gray-500)' }}>{r.visitDate}</td>
@@ -200,9 +223,9 @@ export function DoctorDashboardTab({ user }: { user: any }) {
           <div className="card" style={{ padding: '1.5rem' }}>
             <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--gray-900)', marginBottom: '1.5rem' }}>Upcoming Schedule</h2>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-              {dummyAppointments.map((apt, index) => (
+              {appointments.map((apt, index) => (
                 <div key={apt.id} style={{ display: 'flex', gap: '1rem', position: 'relative' }}>
-                  {index !== dummyAppointments.length - 1 && (
+                  {index !== appointments.length - 1 && (
                     <div style={{ position: 'absolute', left: '5px', top: '24px', bottom: '-24px', width: '2px', background: 'var(--gray-200)' }}></div>
                   )}
                   <div style={{ width: '12px', height: '12px', borderRadius: '50%', background: apt.status === 'Completed' ? '#10B981' : apt.status === 'In Progress' ? '#2563EB' : '#D1D5DB', marginTop: '4px', zIndex: 1, border: '2px solid #fff' }}></div>
@@ -249,47 +272,47 @@ export function DoctorDashboardTab({ user }: { user: any }) {
             
             <div style={{ textAlign: 'center', marginBottom: '2rem', marginTop: '1rem' }}>
               <div style={{ width: '96px', height: '96px', borderRadius: '50%', background: 'var(--gray-100)', color: 'var(--gray-400)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1rem', overflow: 'hidden' }}>
-                <img src={`https://api.dicebear.com/7.x/initials/svg?seed=${dummyPatientDetails.name}`} alt="avatar" style={{ width: '100%', height: '100%' }} />
+                <img src={`https://api.dicebear.com/7.x/initials/svg?seed=${selectedPatient.name}`} alt="avatar" style={{ width: '100%', height: '100%' }} />
               </div>
-              <h2 style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--gray-900)' }}>{dummyPatientDetails.name}</h2>
+              <h2 style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--gray-900)' }}>{selectedPatient.name}</h2>
               <p style={{ color: 'var(--gray-500)', marginTop: '0.25rem' }}>ID: {selectedPatient.id || 'P-4829'}</p>
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem', marginBottom: '2rem', textAlign: 'center' }}>
               <div style={{ background: 'var(--gray-50)', padding: '0.75rem', borderRadius: 'var(--radius)' }}>
                 <span style={{ fontSize: '0.75rem', color: 'var(--gray-500)', display: 'block' }}>Age</span>
-                <strong style={{ color: 'var(--gray-900)' }}>{dummyPatientDetails.age}</strong>
+                <strong style={{ color: 'var(--gray-900)' }}>{selectedPatient.age}</strong>
               </div>
               <div style={{ background: 'var(--gray-50)', padding: '0.75rem', borderRadius: 'var(--radius)' }}>
                 <span style={{ fontSize: '0.75rem', color: 'var(--gray-500)', display: 'block' }}>Gender</span>
-                <strong style={{ color: 'var(--gray-900)' }}>{dummyPatientDetails.gender}</strong>
+                <strong style={{ color: 'var(--gray-900)' }}>{selectedPatient.gender}</strong>
               </div>
               <div style={{ background: 'var(--gray-50)', padding: '0.75rem', borderRadius: 'var(--radius)' }}>
                 <span style={{ fontSize: '0.75rem', color: 'var(--gray-500)', display: 'block' }}>Blood</span>
-                <strong style={{ color: 'var(--red-600)' }}>{dummyPatientDetails.bloodGroup}</strong>
+                <strong style={{ color: 'var(--red-600)' }}>{selectedPatient.bloodGroup}</strong>
               </div>
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
               <div>
                 <h3 style={{ fontSize: '0.875rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--gray-500)', fontWeight: 600, marginBottom: '0.75rem' }}>Medical History</h3>
-                <p style={{ color: 'var(--gray-700)', fontSize: '0.875rem', lineHeight: 1.6 }}>{dummyPatientDetails.history}</p>
+                <p style={{ color: 'var(--gray-700)', fontSize: '0.875rem', lineHeight: 1.6 }}>{selectedPatient.history}</p>
               </div>
               <div>
                 <h3 style={{ fontSize: '0.875rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--gray-500)', fontWeight: 600, marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}><AlertCircle size={16} color="var(--red-500)" /> Allergies</h3>
                 <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                  {dummyPatientDetails.allergies.split(', ').map(a => (
+                  {selectedPatient.allergies.split(', ').map(a => (
                     <span key={a} style={{ background: '#FEE2E2', color: '#DC2626', padding: '0.25rem 0.75rem', borderRadius: '999px', fontSize: '0.75rem', fontWeight: 600 }}>{a}</span>
                   ))}
                 </div>
               </div>
               <div>
                 <h3 style={{ fontSize: '0.875rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--gray-500)', fontWeight: 600, marginBottom: '0.75rem' }}>Current Medications</h3>
-                <p style={{ color: 'var(--gray-700)', fontSize: '0.875rem' }}>{dummyPatientDetails.medications}</p>
+                <p style={{ color: 'var(--gray-700)', fontSize: '0.875rem' }}>{selectedPatient.medications}</p>
               </div>
               <div>
                 <h3 style={{ fontSize: '0.875rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--gray-500)', fontWeight: 600, marginBottom: '0.75rem' }}>Previous Visits</h3>
-                {dummyPatientDetails.previousVisits.map((v, i) => (
+                {selectedPatient.previousVisits.map((v, i) => (
                   <div key={i} style={{ borderLeft: '2px solid var(--primary-200)', paddingLeft: '1rem', marginBottom: '1rem' }}>
                     <p style={{ fontWeight: 600, color: 'var(--gray-900)', fontSize: '0.875rem' }}>{v.date}</p>
                     <p style={{ color: 'var(--gray-600)', fontSize: '0.875rem' }}>{v.reason}</p>

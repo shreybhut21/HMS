@@ -13,7 +13,7 @@ interface MedicineRow {
   instructions: string;
 }
 
-export function DoctorConsultation({ patient, onClose, user }: { patient: any, onClose: () => void, user: any }) {
+export function DoctorConsultation({ patient, onClose, onComplete, user }: { patient: any, onClose: () => void, onComplete?: () => void, user: any }) {
   // Clinical Notes
   const [symptoms, setSymptoms] = useState('Fever, headache and body pain for 3 days.');
   const [diagnosis, setDiagnosis] = useState('Viral Fever');
@@ -23,6 +23,7 @@ export function DoctorConsultation({ patient, onClose, user }: { patient: any, o
   const [followUpDate, setFollowUpDate] = useState('');
   
   const [clinicProfile, setClinicProfile] = useState<any>(null);
+  const [pastPrescriptions, setPastPrescriptions] = useState<any[]>([]);
 
   useEffect(() => {
     // Mock: Find first clinic profile in localStorage since doctor isn't strongly tied to a hospital ID in this prototype yet
@@ -33,7 +34,26 @@ export function DoctorConsultation({ patient, onClose, user }: { patient: any, o
         break;
       }
     }
-  }, []);
+
+    const fetchPast = async () => {
+      try {
+        const token = localStorage.getItem('medicare_token');
+        const res = await fetch(`http://localhost:5000/api/hospital/prescriptions?patient_id=${patient?.patient_id}`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setPastPrescriptions(data);
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    };
+    
+    if (patient?.patient_id) {
+      fetchPast();
+    }
+  }, [patient?.patient_id]);
   
   // Rx Builder State
   const [medicines, setMedicines] = useState<MedicineRow[]>([
@@ -73,6 +93,51 @@ export function DoctorConsultation({ patient, onClose, user }: { patient: any, o
 
   const handlePrint = () => {
     window.print();
+  };
+
+  const handleComplete = async () => {
+    try {
+      const token = localStorage.getItem('medicare_token');
+      const payload = {
+        patient_id: patient.patient_id,
+        appointment_id: patient.id,
+        diagnosis,
+        advice: advice || notes,
+        follow_up_date: followUpDate || null,
+        status: 'Completed',
+        medicines: medicines.filter(m => m.name).map(m => ({
+          medicine_name: m.name,
+          dosage: m.dosage,
+          frequency: m.frequency,
+          duration: m.duration,
+          instructions: m.instructions
+        }))
+      };
+
+      const res = await fetch('http://localhost:5000/api/hospital/prescriptions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if (!res.ok) {
+        const errBody = await res.text();
+        alert('Failed to save prescription: ' + errBody);
+        return;
+      }
+    } catch (err: any) {
+      alert('Error: ' + err.message);
+      return;
+    }
+    
+    if (onComplete) {
+      onComplete();
+    } else {
+      onClose();
+    }
   };
 
   return (
@@ -133,7 +198,7 @@ export function DoctorConsultation({ patient, onClose, user }: { patient: any, o
         <div style={{ display: 'flex', gap: '1rem' }}>
           <button className="btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Save size={16} /> Save Draft</button>
           <button onClick={handlePrint} className="btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--primary-600)' }}><Printer size={16} /> Print / PDF</button>
-          <button onClick={onClose} className="btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}><CheckCircle size={16} /> Complete Consultation</button>
+          <button onClick={handleComplete} className="btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}><CheckCircle size={16} /> Complete Consultation</button>
         </div>
       </header>
 
@@ -145,17 +210,17 @@ export function DoctorConsultation({ patient, onClose, user }: { patient: any, o
           
           {/* PATIENT INFO CARD */}
           <div className="card" style={{ padding: '1.5rem', display: 'flex', gap: '1.5rem', alignItems: 'center', background: 'var(--gray-50)', border: '1px solid var(--gray-200)' }}>
-            <img src={`https://api.dicebear.com/7.x/initials/svg?seed=${patient?.patientName}`} alt="avatar" style={{ width: '80px', height: '80px', borderRadius: '50%', border: '2px solid #fff', boxShadow: 'var(--shadow-sm)' }} />
+            <img src={`https://api.dicebear.com/7.x/initials/svg?seed=${patient?.patient_name || 'Walkin'}`} alt="avatar" style={{ width: '80px', height: '80px', borderRadius: '50%', border: '2px solid #fff', boxShadow: 'var(--shadow-sm)' }} />
             <div style={{ flex: 1 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                 <div>
-                  <h2 style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--gray-900)' }}>{patient?.patientName || 'Walk-in Patient'}</h2>
-                  <p style={{ color: 'var(--gray-500)', fontSize: '0.875rem', marginTop: '0.25rem' }}>{patient?.age} yrs • {patient?.gender} • Blood Group: <span style={{ color: 'var(--red-600)', fontWeight: 600 }}>{patient?.bloodGroup || 'Unknown'}</span></p>
+                  <h2 style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--gray-900)' }}>{patient?.patient_name || 'Walk-in Patient'}</h2>
+                  <p style={{ color: 'var(--gray-500)', fontSize: '0.875rem', marginTop: '0.25rem' }}>{patient?.gender || 'Unknown'} • Blood Group: <span style={{ color: 'var(--red-600)', fontWeight: 600 }}>{patient?.blood_group || 'Unknown'}</span></p>
                   <p style={{ color: 'var(--gray-500)', fontSize: '0.875rem', marginTop: '0.25rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}><Phone size={12} /> {patient?.phone || 'No phone provided'}</p>
                 </div>
                 <div style={{ textAlign: 'right' }}>
-                  <p style={{ color: 'var(--gray-500)', fontSize: '0.75rem', fontWeight: 600 }}>Patient ID: P-4029</p>
-                  <p style={{ color: 'var(--gray-500)', fontSize: '0.75rem', fontWeight: 600 }}>Appt ID: {patient?.id}</p>
+                  <p style={{ color: 'var(--gray-500)', fontSize: '0.75rem', fontWeight: 600 }}>Patient ID: {patient?.patient_id || 'N/A'}</p>
+                  <p style={{ color: 'var(--gray-500)', fontSize: '0.75rem', fontWeight: 600 }}>Appt ID: {patient?.id || 'N/A'}</p>
                 </div>
               </div>
               
@@ -178,16 +243,34 @@ export function DoctorConsultation({ patient, onClose, user }: { patient: any, o
           {/* MEDICAL HISTORY ACCORDION (Simplified) */}
           <div className="card" style={{ padding: '1.5rem' }}>
             <h3 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--gray-900)', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Clock size={18} /> Previous History</h3>
-            <div style={{ display: 'flex', gap: '2rem' }}>
-              <div style={{ flex: 1, borderLeft: '2px solid var(--primary-200)', paddingLeft: '1rem' }}>
-                <p style={{ fontSize: '0.75rem', color: 'var(--gray-500)', fontWeight: 600 }}>Last Visit (Jul 1, 2026)</p>
-                <p style={{ fontSize: '0.875rem', color: 'var(--gray-900)', fontWeight: 500 }}>{patient?.prevDiagnoses || 'Routine Checkup'}</p>
+            
+            {pastPrescriptions.length > 0 ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                {pastPrescriptions.map(pres => (
+                  <div key={pres.id} style={{ display: 'flex', gap: '2rem', borderBottom: '1px solid var(--gray-100)', paddingBottom: '1rem' }}>
+                    <div style={{ flex: 1, borderLeft: '2px solid var(--primary-200)', paddingLeft: '1rem' }}>
+                      <p style={{ fontSize: '0.75rem', color: 'var(--gray-500)', fontWeight: 600 }}>Visit Date: {new Date(pres.created_at).toLocaleDateString()}</p>
+                      <p style={{ fontSize: '0.875rem', color: 'var(--gray-900)', fontWeight: 500 }}>Diagnosis: {pres.diagnosis || 'None recorded'}</p>
+                    </div>
+                    <div style={{ flex: 1, borderLeft: '2px solid var(--primary-200)', paddingLeft: '1rem' }}>
+                      <p style={{ fontSize: '0.75rem', color: 'var(--gray-500)', fontWeight: 600 }}>Prescribed Medications</p>
+                      <ul style={{ margin: 0, paddingLeft: '1.25rem', fontSize: '0.875rem', color: 'var(--gray-900)' }}>
+                        {pres.medicines?.length > 0 ? pres.medicines.map((m: any) => (
+                          <li key={m.id}>{m.medicine_name} {m.dosage}</li>
+                        )) : <li>No medicines prescribed.</li>}
+                      </ul>
+                    </div>
+                  </div>
+                ))}
               </div>
-              <div style={{ flex: 1, borderLeft: '2px solid var(--primary-200)', paddingLeft: '1rem' }}>
-                <p style={{ fontSize: '0.75rem', color: 'var(--gray-500)', fontWeight: 600 }}>Previous Medications</p>
-                <p style={{ fontSize: '0.875rem', color: 'var(--gray-900)', fontWeight: 500 }}>{patient?.medications || 'None'}</p>
+            ) : (
+              <div style={{ display: 'flex', gap: '2rem' }}>
+                <div style={{ flex: 1, borderLeft: '2px solid var(--primary-200)', paddingLeft: '1rem' }}>
+                  <p style={{ fontSize: '0.75rem', color: 'var(--gray-500)', fontWeight: 600 }}>Last Visit</p>
+                  <p style={{ fontSize: '0.875rem', color: 'var(--gray-900)', fontWeight: 500 }}>No previous visits recorded.</p>
+                </div>
               </div>
-            </div>
+            )}
           </div>
 
           {/* CLINICAL DETAILS */}
@@ -339,15 +422,15 @@ export function DoctorConsultation({ patient, onClose, user }: { patient: any, o
             <div style={{ display: 'flex', justifyContent: 'space-between', background: 'var(--gray-50)', padding: '1rem', borderRadius: '8px', marginBottom: '2rem', border: '1px solid var(--gray-200)' }}>
               <div>
                 <p style={{ fontSize: '0.75rem', color: 'var(--gray-500)', fontWeight: 600 }}>Patient Name</p>
-                <p style={{ fontWeight: 700, color: 'var(--gray-900)' }}>{patient?.patientName}</p>
+                <p style={{ fontWeight: 700, color: 'var(--gray-900)' }}>{patient?.patient_name || 'Walk-in'}</p>
               </div>
               <div>
-                <p style={{ fontSize: '0.75rem', color: 'var(--gray-500)', fontWeight: 600 }}>Age / Gender</p>
-                <p style={{ fontWeight: 600, color: 'var(--gray-900)' }}>{patient?.age} / {patient?.gender}</p>
+                <p style={{ fontSize: '0.75rem', color: 'var(--gray-500)', fontWeight: 600 }}>Gender</p>
+                <p style={{ fontWeight: 600, color: 'var(--gray-900)' }}>{patient?.gender || 'Unknown'}</p>
               </div>
               <div>
                 <p style={{ fontSize: '0.75rem', color: 'var(--gray-500)', fontWeight: 600 }}>Patient ID</p>
-                <p style={{ fontWeight: 600, color: 'var(--gray-900)' }}>P-4029</p>
+                <p style={{ fontWeight: 600, color: 'var(--gray-900)' }}>{patient?.patient_id || 'N/A'}</p>
               </div>
               <div>
                 <p style={{ fontSize: '0.75rem', color: 'var(--gray-500)', fontWeight: 600 }}>Date</p>

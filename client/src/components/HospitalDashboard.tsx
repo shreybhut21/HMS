@@ -645,6 +645,7 @@ function AppointmentsTab({ data, refreshData }: { data: any, refreshData: () => 
 
 function PatientsTab({ data }: { data: any }) {
   const [searchTerm, setSearchTerm] = useState('');
+  const [selectedPatient, setSelectedPatient] = useState<any>(null);
 
   // Extract unique patients from appointments
   const appointments = data?.appointments || [];
@@ -720,7 +721,7 @@ function PatientsTab({ data }: { data: any }) {
               </thead>
               <tbody>
                 {filtered.map((pt: any) => (
-                  <tr key={pt.id} style={{ borderBottom: '1px solid var(--gray-100)', transition: 'background 0.2s' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--gray-50)'} onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                  <tr key={pt.id} style={{ borderBottom: '1px solid var(--gray-100)', transition: 'background 0.2s', cursor: 'pointer' }} onClick={() => setSelectedPatient(pt)} onMouseEnter={e => e.currentTarget.style.background = 'var(--gray-50)'} onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
                     <td style={{ padding: '1rem 0.5rem' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
                         <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: 'var(--primary-100)', color: 'var(--primary-600)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -744,6 +745,64 @@ function PatientsTab({ data }: { data: any }) {
           )}
         </div>
       </div>
+
+      {/* Drawer Overlay */}
+      {selectedPatient && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 90 }} onClick={() => setSelectedPatient(null)} />
+      )}
+
+      {/* Drawer */}
+      {selectedPatient && (() => {
+        const patientApts = appointments.filter((a: any) => a.patient_id === selectedPatient.id)
+          .sort((a: any, b: any) => new Date(b.appointment_date).getTime() - new Date(a.appointment_date).getTime());
+
+        return (
+          <div style={{
+            position: 'fixed', top: 0, right: 0, bottom: 0, width: '450px', background: '#fff', 
+            boxShadow: '-4px 0 15px rgba(0,0,0,0.1)', zIndex: 100, display: 'flex', flexDirection: 'column',
+            animation: 'slideIn 0.3s ease-out'
+          }}>
+            <div style={{ padding: '1.5rem 2rem', background: 'var(--primary-600)', color: 'white', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <h2 style={{ fontSize: '1.25rem', fontWeight: 600, marginBottom: '0.25rem' }}>Patient Profile</h2>
+                <p style={{ opacity: 0.9, fontSize: '0.875rem' }}>ID: P-{selectedPatient.id}</p>
+              </div>
+              <button onClick={() => setSelectedPatient(null)} style={{ background: 'rgba(255,255,255,0.2)', border: 'none', color: 'white', width: '32px', height: '32px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+                <X size={18} />
+              </button>
+            </div>
+
+            <div style={{ padding: '2rem', flex: 1, overflowY: 'auto' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '2rem' }}>
+                <div style={{ width: '60px', height: '60px', borderRadius: '50%', background: 'var(--primary-100)', color: 'var(--primary-600)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <User size={30} />
+                </div>
+                <div>
+                  <h3 style={{ fontSize: '1.25rem', fontWeight: 600, color: 'var(--gray-900)' }}>{selectedPatient.name}</h3>
+                  <p style={{ color: 'var(--gray-500)', display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.25rem' }}><Mail size={14} /> {selectedPatient.email}</p>
+                </div>
+              </div>
+
+              <div style={{ marginBottom: '2rem' }}>
+                <h4 style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--gray-400)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '1rem' }}>Visit History</h4>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                  {patientApts.map((apt: any) => (
+                    <div key={apt.id} style={{ padding: '1rem', border: '1px solid var(--gray-200)', borderRadius: 'var(--radius)', background: 'var(--gray-50)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                        <span style={{ fontWeight: 600, color: 'var(--gray-900)' }}>{new Date(apt.appointment_date).toLocaleDateString()}</span>
+                        <span style={{ fontSize: '0.75rem', padding: '0.25rem 0.5rem', background: apt.status === 'Completed' ? '#D1FAE5' : apt.status === 'Pending' ? '#FEF3C7' : '#DBEAFE', color: apt.status === 'Completed' ? '#059669' : apt.status === 'Pending' ? '#D97706' : '#2563EB', borderRadius: '9999px', fontWeight: 600 }}>{apt.status}</span>
+                      </div>
+                      <p style={{ fontSize: '0.875rem', color: 'var(--gray-600)' }}><span style={{ fontWeight: 500 }}>Reason:</span> {apt.problem_description}</p>
+                    </div>
+                  ))}
+                  {patientApts.length === 0 && <p style={{ color: 'var(--gray-500)', fontSize: '0.875rem' }}>No history found.</p>}
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
     </div>
   );
 }

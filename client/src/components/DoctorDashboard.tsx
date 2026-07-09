@@ -4,6 +4,8 @@ import { Navigate } from 'react-router-dom';
 import { LayoutDashboard, Calendar as CalendarIcon, Users, Pill, FileText, User as UserIcon, Settings, LogOut } from 'lucide-react';
 import { DoctorDashboardTab } from './DoctorDashboardTab';
 import { DoctorAppointmentsTab } from './DoctorAppointmentsTab';
+import { DoctorPatientsTab } from './DoctorPatientsTab';
+import { DoctorPrescriptionsTab } from './DoctorPrescriptionsTab';
 
 type Tab = 'dashboard' | 'appointments' | 'patients' | 'prescriptions' | 'records' | 'profile' | 'settings';
 
@@ -20,9 +22,9 @@ export function DoctorDashboard() {
       case 'appointments':
         return <DoctorAppointmentsTab />;
       case 'patients':
-        return <div><h2 style={{ fontSize: '1.5rem', fontWeight: 600 }}>Patients</h2><p>Patient directory coming soon.</p></div>;
+        return <DoctorPatientsTab />;
       case 'prescriptions':
-        return <div><h2 style={{ fontSize: '1.5rem', fontWeight: 600 }}>Prescriptions</h2><p>Prescription history coming soon.</p></div>;
+        return <DoctorPrescriptionsTab />;
       case 'records':
         return <div><h2 style={{ fontSize: '1.5rem', fontWeight: 600 }}>Medical Records</h2><p>Records access coming soon.</p></div>;
       case 'profile':

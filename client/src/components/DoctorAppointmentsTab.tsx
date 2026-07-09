@@ -6,15 +6,7 @@ import {
 import { DoctorConsultation } from './DoctorConsultation';
 import { useAuth } from '../contexts/AuthContext';
 
-// --- DUMMY DATA ---
-const dummyAppointments: any[] = [];
-
-const dummyStats = {
-  today: { count: 0, trend: '-' },
-  upcoming: { count: 0, trend: '-' },
-  completed: { count: 0, trend: '-' },
-  cancelled: { count: 0, trend: '-' }
-};
+import { useEffect } from 'react';
 
 export function DoctorAppointmentsTab() {
   const { user } = useAuth();
@@ -26,17 +18,83 @@ export function DoctorAppointmentsTab() {
   const [showDrawer, setShowDrawer] = useState(false);
   const [showConsultModal, setShowConsultModal] = useState(false);
 
+  const [appointments, setAppointments] = useState<any[]>([]);
+  const [stats, setStats] = useState({
+    today: { count: 0, trend: '-' },
+    upcoming: { count: 0, trend: '-' },
+    completed: { count: 0, trend: '-' },
+    cancelled: { count: 0, trend: '-' }
+  });
+
+  const fetchAppointments = async () => {
+    try {
+      const token = localStorage.getItem('medicare_token');
+      const res = await fetch('http://localhost:5000/api/hospital/appointments', { headers: { 'Authorization': `Bearer ${token}` } });
+      if (res.ok) {
+        const data = await res.json();
+        setAppointments(data);
+        
+        // Calculate stats
+        const today = new Date().toDateString();
+        let todayCount = 0, upcomingCount = 0, completedCount = 0, cancelledCount = 0;
+        data.forEach((apt: any) => {
+          const aptDate = new Date(apt.appointment_date).toDateString();
+          if (apt.status === 'Completed') completedCount++;
+          else if (apt.status === 'Cancelled' || apt.status === 'Rejected') cancelledCount++;
+          else if (aptDate === today) todayCount++;
+          else upcomingCount++;
+        });
+
+        setStats({
+          today: { count: todayCount, trend: '-' },
+          upcoming: { count: upcomingCount, trend: '-' },
+          completed: { count: completedCount, trend: '-' },
+          cancelled: { count: cancelledCount, trend: '-' }
+        });
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  useEffect(() => {
+    fetchAppointments();
+  }, []);
+
+  const updateStatus = async (id: number, status: string) => {
+    try {
+      const token = localStorage.getItem('medicare_token');
+      const res = await fetch(`http://localhost:5000/api/hospital/appointments/${id}/status`, {
+        method: 'PATCH',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}` 
+        },
+        body: JSON.stringify({ status })
+      });
+      if (res.ok) {
+        fetchAppointments();
+      }
+    } catch (error) {
+      console.error('Error updating status:', error);
+    }
+  };
+
   // Filtering Logic
   const filteredAppointments = useMemo(() => {
-    return dummyAppointments.filter(apt => {
-      const matchesSearch = apt.patientName.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                            apt.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                            apt.phone.includes(searchTerm);
+    return appointments.filter(apt => {
+      const pName = apt.patient_name || '';
+      const aptId = apt.id ? apt.id.toString() : '';
+      const phone = apt.phone || '';
+
+      const matchesSearch = pName.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                            aptId.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                            phone.includes(searchTerm);
       const matchesStatus = statusFilter === 'All' || apt.status === statusFilter;
-      const matchesType = typeFilter === 'All' || apt.type === typeFilter;
-      return matchesSearch && matchesStatus && matchesType;
+      // Ignoring typeFilter for now as it's not provided by API
+      return matchesSearch && matchesStatus;
     });
-  }, [searchTerm, statusFilter, typeFilter]);
+  }, [appointments, searchTerm, statusFilter, typeFilter]);
 
   const openDrawer = (apt: any) => {
     setSelectedPatient(apt);
@@ -50,10 +108,11 @@ export function DoctorAppointmentsTab() {
 
   const getStatusColor = (status: string) => {
     switch(status) {
-      case 'Upcoming': return { bg: '#DBEAFE', text: '#1D4ED8' }; // Blue
-      case 'In Progress': return { bg: '#FEF3C7', text: '#D97706' }; // Orange
+      case 'Pending': return { bg: '#FEF3C7', text: '#D97706' }; // Yellow
+      case 'Approved': return { bg: '#DBEAFE', text: '#1D4ED8' }; // Blue
       case 'Completed': return { bg: '#D1FAE5', text: '#047857' }; // Green
-      case 'Cancelled': return { bg: '#FEE2E2', text: '#DC2626' }; // Red
+      case 'Cancelled':
+      case 'Rejected': return { bg: '#FEE2E2', text: '#DC2626' }; // Red
       default: return { bg: '#F3F4F6', text: '#4B5563' };
     }
   };
@@ -80,30 +139,30 @@ export function DoctorAppointmentsTab() {
         <div className="card" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: '#DBEAFE', color: '#2563EB', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Calendar size={20} /></div>
-            <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#059669', background: '#D1FAE5', padding: '0.25rem 0.5rem', borderRadius: '999px' }}>{dummyStats.today.trend}</span>
+            <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#059669', background: '#D1FAE5', padding: '0.25rem 0.5rem', borderRadius: '999px' }}>{stats.today.trend}</span>
           </div>
-          <div><p style={{ color: 'var(--gray-500)', fontSize: '0.875rem', fontWeight: 500 }}>Today's Appointments</p><h3 style={{ fontSize: '1.75rem', fontWeight: 700, color: 'var(--gray-900)' }}>{dummyStats.today.count}</h3></div>
+          <div><p style={{ color: 'var(--gray-500)', fontSize: '0.875rem', fontWeight: 500 }}>Today's Appointments</p><h3 style={{ fontSize: '1.75rem', fontWeight: 700, color: 'var(--gray-900)' }}>{stats.today.count}</h3></div>
         </div>
         <div className="card" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: '#FEF3C7', color: '#D97706', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Clock size={20} /></div>
-            <span style={{ fontSize: '0.75rem', fontWeight: 500, color: 'var(--gray-500)' }}>{dummyStats.upcoming.trend}</span>
+            <span style={{ fontSize: '0.75rem', fontWeight: 500, color: 'var(--gray-500)' }}>{stats.upcoming.trend}</span>
           </div>
-          <div><p style={{ color: 'var(--gray-500)', fontSize: '0.875rem', fontWeight: 500 }}>Upcoming Appointments</p><h3 style={{ fontSize: '1.75rem', fontWeight: 700, color: 'var(--gray-900)' }}>{dummyStats.upcoming.count}</h3></div>
+          <div><p style={{ color: 'var(--gray-500)', fontSize: '0.875rem', fontWeight: 500 }}>Upcoming Appointments</p><h3 style={{ fontSize: '1.75rem', fontWeight: 700, color: 'var(--gray-900)' }}>{stats.upcoming.count}</h3></div>
         </div>
         <div className="card" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: '#D1FAE5', color: '#10B981', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><CheckCircle size={20} /></div>
-            <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#059669', background: '#D1FAE5', padding: '0.25rem 0.5rem', borderRadius: '999px' }}>{dummyStats.completed.trend}</span>
+            <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#059669', background: '#D1FAE5', padding: '0.25rem 0.5rem', borderRadius: '999px' }}>{stats.completed.trend}</span>
           </div>
-          <div><p style={{ color: 'var(--gray-500)', fontSize: '0.875rem', fontWeight: 500 }}>Completed Consultations</p><h3 style={{ fontSize: '1.75rem', fontWeight: 700, color: 'var(--gray-900)' }}>{dummyStats.completed.count}</h3></div>
+          <div><p style={{ color: 'var(--gray-500)', fontSize: '0.875rem', fontWeight: 500 }}>Completed Consultations</p><h3 style={{ fontSize: '1.75rem', fontWeight: 700, color: 'var(--gray-900)' }}>{stats.completed.count}</h3></div>
         </div>
         <div className="card" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: '#FEE2E2', color: '#DC2626', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><XCircle size={20} /></div>
-            <span style={{ fontSize: '0.75rem', fontWeight: 500, color: 'var(--gray-500)' }}>{dummyStats.cancelled.trend}</span>
+            <span style={{ fontSize: '0.75rem', fontWeight: 500, color: 'var(--gray-500)' }}>{stats.cancelled.trend}</span>
           </div>
-          <div><p style={{ color: 'var(--gray-500)', fontSize: '0.875rem', fontWeight: 500 }}>Cancelled Appointments</p><h3 style={{ fontSize: '1.75rem', fontWeight: 700, color: 'var(--gray-900)' }}>{dummyStats.cancelled.count}</h3></div>
+          <div><p style={{ color: 'var(--gray-500)', fontSize: '0.875rem', fontWeight: 500 }}>Cancelled Appointments</p><h3 style={{ fontSize: '1.75rem', fontWeight: 700, color: 'var(--gray-900)' }}>{stats.cancelled.count}</h3></div>
         </div>
       </div>
 
@@ -132,10 +191,11 @@ export function DoctorAppointmentsTab() {
             </select>
             <select className="form-input" style={{ width: 'auto', minWidth: '150px' }} value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
               <option value="All">All Status</option>
-              <option value="Upcoming">Upcoming</option>
-              <option value="In Progress">In Progress</option>
+              <option value="Pending">Pending</option>
+              <option value="Approved">Approved</option>
               <option value="Completed">Completed</option>
               <option value="Cancelled">Cancelled</option>
+              <option value="Rejected">Rejected</option>
             </select>
             <select className="form-input" style={{ width: 'auto', minWidth: '150px' }} value={typeFilter} onChange={e => setTypeFilter(e.target.value)}>
               <option value="All">All Types</option>
@@ -174,15 +234,15 @@ export function DoctorAppointmentsTab() {
                     return (
                       <tr key={apt.id} style={{ borderBottom: '1px solid var(--gray-100)', transition: 'background 0.2s' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--gray-50)'} onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
                         <td style={{ padding: '1rem' }}>
-                          <p style={{ fontWeight: 600, color: 'var(--gray-900)' }}>{apt.id}</p>
-                          <p style={{ fontSize: '0.875rem', color: 'var(--gray-500)' }}>{apt.time}</p>
+                          <p style={{ fontWeight: 600, color: 'var(--gray-900)' }}>#{apt.id}</p>
+                          <p style={{ fontSize: '0.875rem', color: 'var(--gray-500)' }}>{apt.appointment_date?.split('T')[0]} {apt.appointment_time}</p>
                         </td>
                         <td style={{ padding: '1rem' }}>
-                          <p style={{ fontWeight: 600, color: 'var(--gray-900)' }}>{apt.patientName}</p>
-                          <p style={{ fontSize: '0.875rem', color: 'var(--gray-500)' }}>{apt.age}y, {apt.gender}</p>
+                          <p style={{ fontWeight: 600, color: 'var(--gray-900)' }}>{apt.patient_name}</p>
+                          <p style={{ fontSize: '0.875rem', color: 'var(--gray-500)' }}>{apt.gender || 'Unknown'}</p>
                         </td>
                         <td style={{ padding: '1rem', color: 'var(--gray-700)', fontSize: '0.875rem', fontWeight: 500 }}>
-                          {apt.type}
+                          Consultation
                         </td>
                         <td style={{ padding: '1rem' }}>
                           <span style={{ padding: '0.25rem 0.75rem', borderRadius: '999px', fontSize: '0.75rem', fontWeight: 600, background: statusColor.bg, color: statusColor.text }}>
@@ -191,13 +251,26 @@ export function DoctorAppointmentsTab() {
                         </td>
                         <td style={{ padding: '1rem', textAlign: 'right' }}>
                           <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
-                            <button onClick={() => openDrawer(apt)} className="btn-secondary" style={{ padding: '0.4rem 0.75rem', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                              <Eye size={14} /> Details
-                            </button>
-                            {apt.status !== 'Completed' && apt.status !== 'Cancelled' && (
-                              <button onClick={() => openConsult(apt)} className="btn-primary" style={{ padding: '0.4rem 0.75rem', fontSize: '0.75rem' }}>
-                                Consult
-                              </button>
+                            {apt.status === 'Pending' ? (
+                              <>
+                                <button onClick={() => updateStatus(apt.id, 'Approved')} className="btn-primary" style={{ padding: '0.4rem 0.75rem', fontSize: '0.75rem', background: '#10B981', borderColor: '#10B981' }}>
+                                  Approve
+                                </button>
+                                <button onClick={() => updateStatus(apt.id, 'Rejected')} className="btn-secondary" style={{ padding: '0.4rem 0.75rem', fontSize: '0.75rem', color: '#DC2626', borderColor: '#FCA5A5' }}>
+                                  Reject
+                                </button>
+                              </>
+                            ) : (
+                              <>
+                                <button onClick={() => openDrawer(apt)} className="btn-secondary" style={{ padding: '0.4rem 0.75rem', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                                  <Eye size={14} /> Details
+                                </button>
+                                {apt.status === 'Approved' && (
+                                  <button onClick={() => openConsult(apt)} className="btn-primary" style={{ padding: '0.4rem 0.75rem', fontSize: '0.75rem' }}>
+                                    Consult
+                                  </button>
+                                )}
+                              </>
                             )}
                           </div>
                         </td>
@@ -216,7 +289,7 @@ export function DoctorAppointmentsTab() {
             <Clock size={20} color="var(--primary-600)" /> Today's Timeline
           </h2>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-            {dummyAppointments.filter(a => a.status !== 'Cancelled').map((apt, index, arr) => (
+            {appointments.filter(a => a.status !== 'Cancelled').map((apt, index, arr) => (
               <div key={apt.id} style={{ display: 'flex', gap: '1rem', position: 'relative' }}>
                 {index !== arr.length - 1 && (
                   <div style={{ position: 'absolute', left: '5px', top: '24px', bottom: '-24px', width: '2px', background: 'var(--gray-200)' }}></div>
@@ -243,11 +316,11 @@ export function DoctorAppointmentsTab() {
             
             {/* Patient Info */}
             <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', marginBottom: '2rem' }}>
-              <img src={`https://api.dicebear.com/7.x/initials/svg?seed=${selectedPatient.patientName}`} alt="avatar" style={{ width: '64px', height: '64px', borderRadius: '50%', border: '2px solid var(--gray-200)' }} />
+              <img src={`https://api.dicebear.com/7.x/initials/svg?seed=${selectedPatient.patient_name || 'Walkin'}`} alt="avatar" style={{ width: '64px', height: '64px', borderRadius: '50%', border: '2px solid var(--gray-200)' }} />
               <div>
-                <h3 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--gray-900)' }}>{selectedPatient.patientName}</h3>
-                <p style={{ color: 'var(--gray-500)', fontSize: '0.875rem' }}>{selectedPatient.age} yrs • {selectedPatient.gender} • <span style={{ color: 'var(--red-500)', fontWeight: 600 }}>{selectedPatient.bloodGroup}</span></p>
-                <p style={{ color: 'var(--gray-500)', fontSize: '0.875rem', display: 'flex', alignItems: 'center', gap: '0.25rem', marginTop: '0.25rem' }}><Phone size={12} /> {selectedPatient.phone}</p>
+                <h3 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--gray-900)' }}>{selectedPatient.patient_name || 'Walk-in Patient'}</h3>
+                <p style={{ color: 'var(--gray-500)', fontSize: '0.875rem' }}>{selectedPatient.gender || 'Unknown'} • <span style={{ color: 'var(--red-500)', fontWeight: 600 }}>{selectedPatient.blood_group || 'Unknown'}</span></p>
+                <p style={{ color: 'var(--gray-500)', fontSize: '0.875rem', display: 'flex', alignItems: 'center', gap: '0.25rem', marginTop: '0.25rem' }}><Phone size={12} /> {selectedPatient.phone || 'No phone'}</p>
               </div>
             </div>
 
@@ -257,15 +330,15 @@ export function DoctorAppointmentsTab() {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                 <div>
                   <p style={{ fontSize: '0.75rem', color: 'var(--gray-500)' }}>ID</p>
-                  <p style={{ fontWeight: 600, color: 'var(--gray-900)' }}>{selectedPatient.id}</p>
+                  <p style={{ fontWeight: 600, color: 'var(--gray-900)' }}>#{selectedPatient.id}</p>
                 </div>
                 <div>
                   <p style={{ fontSize: '0.75rem', color: 'var(--gray-500)' }}>Type</p>
-                  <p style={{ fontWeight: 600, color: 'var(--gray-900)' }}>{selectedPatient.type}</p>
+                  <p style={{ fontWeight: 600, color: 'var(--gray-900)' }}>Consultation</p>
                 </div>
                 <div>
                   <p style={{ fontSize: '0.75rem', color: 'var(--gray-500)' }}>Time</p>
-                  <p style={{ fontWeight: 600, color: 'var(--gray-900)' }}>{selectedPatient.time}</p>
+                  <p style={{ fontWeight: 600, color: 'var(--gray-900)' }}>{selectedPatient.appointment_time || 'N/A'}</p>
                 </div>
                 <div>
                   <p style={{ fontSize: '0.75rem', color: 'var(--gray-500)' }}>Status</p>
@@ -280,15 +353,15 @@ export function DoctorAppointmentsTab() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                 <div>
                   <p style={{ fontSize: '0.75rem', color: 'var(--gray-500)', marginBottom: '0.25rem' }}>Chronic Conditions</p>
-                  <p style={{ fontWeight: 500, color: 'var(--gray-900)', fontSize: '0.875rem' }}>{selectedPatient.history}</p>
+                  <p style={{ fontWeight: 500, color: 'var(--gray-900)', fontSize: '0.875rem' }}>{selectedPatient.history || 'None recorded'}</p>
                 </div>
                 <div>
                   <p style={{ fontSize: '0.75rem', color: 'var(--gray-500)', marginBottom: '0.25rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}><AlertCircle size={12} color="var(--red-500)" /> Allergies</p>
-                  <p style={{ fontWeight: 600, color: 'var(--red-600)', fontSize: '0.875rem' }}>{selectedPatient.allergies}</p>
+                  <p style={{ fontWeight: 600, color: 'var(--red-600)', fontSize: '0.875rem' }}>{selectedPatient.allergies || 'None'}</p>
                 </div>
                 <div>
                   <p style={{ fontSize: '0.75rem', color: 'var(--gray-500)', marginBottom: '0.25rem' }}>Current Medications</p>
-                  <p style={{ fontWeight: 500, color: 'var(--gray-900)', fontSize: '0.875rem' }}>{selectedPatient.medications}</p>
+                  <p style={{ fontWeight: 500, color: 'var(--gray-900)', fontSize: '0.875rem' }}>{selectedPatient.medications || 'None'}</p>
                 </div>
               </div>
             </div>
@@ -305,6 +378,10 @@ export function DoctorAppointmentsTab() {
         <DoctorConsultation 
           patient={selectedPatient} 
           onClose={() => setShowConsultModal(false)}
+          onComplete={() => {
+            updateStatus(selectedPatient.id, 'Completed');
+            setShowConsultModal(false);
+          }}
           user={user}
         />
       )}

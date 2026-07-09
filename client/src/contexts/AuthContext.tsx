@@ -16,6 +16,7 @@ export interface PendingHospital {
 
 interface AuthContextType {
   user: User | null;
+  token: string | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<User>;
   signUp: (data: Record<string, string>, type: 'patient' | 'hospital') => Promise<{ pending?: boolean }>;
@@ -33,15 +34,18 @@ const API_URL = 'http://localhost:5000/api';
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
+  const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [pendingHospitals, setPendingHospitals] = useState<PendingHospital[]>([]);
 
   // Initialize session from localStorage token
   useEffect(() => {
     const storedUser = localStorage.getItem('medicare_session');
-    if (storedUser) {
+    const storedToken = localStorage.getItem('medicare_token');
+    if (storedUser && storedToken) {
       try {
         setUser(JSON.parse(storedUser));
+        setToken(storedToken);
       } catch (e) {
         localStorage.removeItem('medicare_session');
         localStorage.removeItem('medicare_token');
@@ -50,14 +54,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setLoading(false);
   }, []);
 
-  const setSession = (userData: User, token: string) => {
+  const setSession = (userData: User, tokenStr: string) => {
     setUser(userData);
+    setToken(tokenStr);
     localStorage.setItem('medicare_session', JSON.stringify(userData));
-    localStorage.setItem('medicare_token', token);
+    localStorage.setItem('medicare_token', tokenStr);
   };
 
   const clearSession = () => {
     setUser(null);
+    setToken(null);
     localStorage.removeItem('medicare_session');
     localStorage.removeItem('medicare_token');
   };
@@ -159,7 +165,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider value={{ 
-      user, loading, signIn, signUp, signOut, 
+      user, token, loading, signIn, signUp, signOut, 
       pendingHospitals, fetchPendingHospitals, approveHospital, rejectHospital 
     }}>
       {children}

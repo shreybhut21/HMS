@@ -9,6 +9,39 @@ import { getAllTipsAndFacts } from '../utils/healthTips';
 
 type Tab = 'dashboard' | 'clinics' | 'history' | 'profile';
 
+function LiveQueueWidget({ hospitalId, hospitalName }: { hospitalId: number, hospitalName: string }) {
+  const [queue, setQueue] = useState({ current_token: 0, last_issued_token: 0 });
+
+  useEffect(() => {
+    const fetchQueue = async () => {
+      try {
+        const res = await fetch(`http://localhost:5000/api/hospital/${hospitalId}/queue`);
+        if (res.ok) setQueue(await res.json());
+      } catch (err) {
+        console.error(err);
+      }
+    };
+    fetchQueue();
+    const interval = setInterval(fetchQueue, 10000);
+    return () => clearInterval(interval);
+  }, [hospitalId]);
+
+  if (!queue.last_issued_token) return null;
+
+  return (
+    <div style={{ marginTop: '0.75rem', padding: '0.75rem 1rem', background: '#F0FDF4', borderRadius: 'var(--radius)', border: '1px solid #BBF7D0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div>
+        <p style={{ fontSize: '0.75rem', color: '#166534', fontWeight: 600, textTransform: 'uppercase' }}>Live Queue • {hospitalName}</p>
+        <p style={{ fontSize: '0.875rem', color: '#14532D', marginTop: '0.25rem' }}>Now Serving: <span style={{ fontWeight: 700, fontSize: '1.125rem' }}>#{queue.current_token}</span></p>
+      </div>
+      <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ width: '12px', height: '12px', borderRadius: '50%', background: '#22C55E' }}></div>
+        <div style={{ position: 'absolute', width: '24px', height: '24px', borderRadius: '50%', background: '#22C55E', opacity: 0.3 }}></div>
+      </div>
+    </div>
+  );
+}
+
 export function PatientDashboard() {
   const [activeTab, setActiveTab] = useState<Tab>('dashboard');
   const { user } = useAuth();
@@ -179,26 +212,41 @@ function DashboardTab({ profileData, dashboardData, name, onNavigate }: { profil
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                 {upcomingAppointments.map((apt, i) => (
-                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1rem', border: '1px solid var(--gray-200)', borderRadius: 'var(--radius)' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                      <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: 'var(--primary-50)', color: 'var(--primary-600)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <Stethoscope size={20} />
+                  <div key={i} style={{ border: '1px solid var(--gray-200)', borderRadius: 'var(--radius)', overflow: 'hidden' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                        <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: 'var(--primary-50)', color: 'var(--primary-600)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <Stethoscope size={20} />
+                        </div>
+                        <div>
+                          <h4 style={{ fontWeight: 600, color: 'var(--gray-900)', fontSize: '0.9375rem' }}>{apt.doctor_name || apt.hospital_name}</h4>
+                          <p style={{ color: 'var(--gray-500)', fontSize: '0.8125rem' }}>{apt.hospital_name} • {new Date(apt.appointment_date).toLocaleDateString()} at {apt.appointment_time}</p>
+                          {apt.token_number && (
+                            <div style={{ marginTop: '0.5rem', display: 'inline-block', padding: '0.25rem 0.5rem', background: 'var(--gray-100)', borderRadius: '0.25rem', fontSize: '0.75rem', fontWeight: 600, color: 'var(--gray-700)' }}>
+                              Your Token: #{apt.token_number}
+                            </div>
+                          )}
+                        </div>
                       </div>
-                      <div>
-                        <h4 style={{ fontWeight: 600, color: 'var(--gray-900)', fontSize: '0.9375rem' }}>{apt.doctor_name || apt.hospital_name}</h4>
-                        <p style={{ color: 'var(--gray-500)', fontSize: '0.8125rem' }}>{apt.hospital_name} • {new Date(apt.appointment_date).toLocaleDateString()} at {apt.appointment_time}</p>
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.5rem' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                        <span style={{ 
+                          padding: '0.25rem 0.75rem', borderRadius: '999px', fontSize: '0.75rem', fontWeight: 600, 
+                          color: apt.status === 'Approved' ? '#047857' : '#B45309', 
+                          background: apt.status === 'Approved' ? '#D1FAE5' : '#FEF3C7' 
+                        }}>
+                          {apt.status}
+                        </span>
+                        <button className="btn-secondary" style={{ padding: '0.4rem 0.75rem', fontSize: '0.8125rem' }}>Details</button>
+                        </div>
                       </div>
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                      <span style={{ 
-                        padding: '0.25rem 0.75rem', borderRadius: '999px', fontSize: '0.75rem', fontWeight: 600, 
-                        color: apt.status === 'Approved' ? '#047857' : '#B45309', 
-                        background: apt.status === 'Approved' ? '#D1FAE5' : '#FEF3C7' 
-                      }}>
-                        {apt.status}
-                      </span>
-                      <button className="btn-secondary" style={{ padding: '0.4rem 0.75rem', fontSize: '0.8125rem' }}>Details</button>
-                    </div>
+                    
+                    {apt.status === 'Approved' && apt.hospital_id && new Date(apt.appointment_date).toDateString() === new Date().toDateString() && (
+                      <div style={{ padding: '0 1rem 1rem 1rem' }}>
+                        <LiveQueueWidget hospitalId={apt.hospital_id} hospitalName={apt.hospital_name} />
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -630,6 +678,7 @@ function ClinicDetail({ clinicId, onBack }: { clinicId: number, onBack: () => vo
   const [date, setDate] = useState('');
   const [time, setTime] = useState('');
   const [problem, setProblem] = useState('');
+  const [doctorId, setDoctorId] = useState('');
   const [bookingStatus, setBookingStatus] = useState<'idle'|'saving'|'success'|'error'>('idle');
   const [errorMessage, setErrorMessage] = useState('');
   
@@ -671,7 +720,7 @@ function ClinicDetail({ clinicId, onBack }: { clinicId: number, onBack: () => vo
       const res = await fetch('http://localhost:5000/api/patient/appointments', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify({ hospital_id: clinicId, date, time, problem_description: problem })
+        body: JSON.stringify({ hospital_id: clinicId, doctor_id: doctorId, date, time, problem_description: problem })
       });
       
       if (!res.ok) throw new Error('Booking failed');
@@ -757,6 +806,15 @@ function ClinicDetail({ clinicId, onBack }: { clinicId: number, onBack: () => vo
                 </div>
               )}
               
+              <div>
+                <label className="form-label">Preferred Doctor</label>
+                <select className="form-input" value={doctorId} onChange={e => setDoctorId(e.target.value)} required>
+                  <option value="" disabled>Select a Doctor</option>
+                  {clinic.doctors && clinic.doctors.map((doc: any) => (
+                    <option key={doc.id} value={doc.id}>{doc.name} - {doc.specialization || 'General'}</option>
+                  ))}
+                </select>
+              </div>
               <div>
                 <label className="form-label">Preferred Date</label>
                 <input type="date" className="form-input" value={date} onChange={e => setDate(e.target.value)} required />
