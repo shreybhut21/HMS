@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  IndianRupee, FileText, CheckCircle, Clock, Search, Eye, Printer, Receipt, PlusCircle, X
+  IndianRupee, FileText, CheckCircle, Clock, Search, Eye, Printer, Receipt, PlusCircle, X, Edit, MessageCircle
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -8,9 +8,15 @@ interface Invoice {
   id: number;
   invoice_number: string;
   patient_name: string;
+  patient_id: number;
+  patient_phone?: string;
   doctor_name: string;
   total_amount: number;
+  consultation_fee?: number;
+  additional_charges?: number;
+  discount?: number;
   status: 'Pending' | 'Paid';
+  prescription_uid?: string;
   created_at: string;
 }
 
@@ -37,6 +43,15 @@ export function ReceptionistBillingTab() {
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
   const [selectedInvoiceForPayment, setSelectedInvoiceForPayment] = useState<number | null>(null);
   const [paymentMethod, setPaymentMethod] = useState('UPI');
+
+  // Edit Modal State
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
+  const [editFormData, setEditFormData] = useState({ consFee: 0, addCharges: 0, discount: 0 });
+
+  // View Modal State
+  const [viewModalOpen, setViewModalOpen] = useState(false);
+  const [viewingInvoice, setViewingInvoice] = useState<Invoice | null>(null);
 
   useEffect(() => {
     fetchData();
@@ -112,6 +127,91 @@ export function ReceptionistBillingTab() {
     setSelectedInvoiceForPayment(null);
   };
 
+  const handleEditClick = (inv: Invoice) => {
+    setEditingInvoice(inv);
+    setEditFormData({
+      consFee: Number(inv.consultation_fee) || 0,
+      addCharges: Number(inv.additional_charges) || 0,
+      discount: Number(inv.discount) || 0
+    });
+    setEditModalOpen(true);
+  };
+
+  const handleUpdateInvoice = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingInvoice) return;
+    try {
+      const res = await fetch(`http://localhost:5000/api/hospital/invoices/${editingInvoice.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({
+          consultation_fee: editFormData.consFee,
+          additional_charges: editFormData.addCharges,
+          discount: editFormData.discount
+        })
+      });
+      if (res.ok) {
+        fetchData();
+        setEditModalOpen(false);
+        setEditingInvoice(null);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleWhatsApp = (inv: Invoice) => {
+    const phone = inv.patient_phone || '';
+    
+    // Format date like '09 Jul 2026 | 10:30 AM'
+    const dateObj = new Date(inv.created_at);
+    const dateStr = dateObj.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+    const timeStr = dateObj.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+
+    const baseUrl = window.location.origin;
+
+    let message = `🏥 ${inv.hospital_name ? inv.hospital_name.toUpperCase() : 'SUNRISE CLINIC'}
+
+Hello ${inv.patient_name},
+
+Thank you for visiting our clinic today.
+
+━━━━━━━━━━━━━━━
+
+Doctor:
+Dr. ${inv.doctor_name || 'Clinic Doctor'}
+
+Appointment:
+${dateStr} | ${timeStr}
+
+Invoice:
+${inv.invoice_number}
+
+Amount:
+₹${inv.total_amount}
+
+━━━━━━━━━━━━━━━
+
+* Download Invoice
+${baseUrl}/invoice/${inv.invoice_number}
+
+* Prescription
+${baseUrl}/prescription/RX-${inv.invoice_number.replace('INV-', '')}
+
+* Need Help?
+${inv.hospital_phone || '+91 9876543210'}
+
+Thank you for choosing ${inv.hospital_name || 'Sunrise Clinic'}.`;
+
+    const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+    window.open(url, '_blank');
+  };
+
+  const handleViewClick = (inv: Invoice) => {
+    setViewingInvoice(inv);
+    setViewModalOpen(true);
+  };
+
   const filteredInvoices = invoices.filter(inv => 
     (inv.invoice_number || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
     (inv.patient_name || '').toLowerCase().includes(searchTerm.toLowerCase())
@@ -156,35 +256,35 @@ export function ReceptionistBillingTab() {
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 2.5fr', gap: '2rem' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
         
-        {/* LEFT COLUMN: CREATE INVOICE FORM */}
+        {/* TOP: CREATE INVOICE FORM */}
         <div className="card" style={{ height: 'fit-content' }}>
           <div style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid var(--gray-200)', background: 'var(--gray-50)' }}>
             <h2 style={{ fontSize: '1.125rem', fontWeight: 700, color: 'var(--gray-900)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <PlusCircle size={18} color="var(--primary-600)" /> Create Invoice
             </h2>
           </div>
-          <form onSubmit={handleCreateInvoice} style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+          <form onSubmit={handleCreateInvoice} style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
             
-            <div>
-              <label className="form-label">Patient Name <span style={{ color: 'red' }}>*</span></label>
-              <input 
-                type="text" className="form-input" placeholder="Search or Enter Name" required
-                value={formData.patient} onChange={e => setFormData({...formData, patient: e.target.value})}
-              />
-            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '1.5rem' }}>
+              <div>
+                <label className="form-label">Patient Name <span style={{ color: 'red' }}>*</span></label>
+                <input 
+                  type="text" className="form-input" placeholder="Search or Enter Name" required
+                  value={formData.patient} onChange={e => setFormData({...formData, patient: e.target.value})}
+                />
+              </div>
 
-            <div>
-              <label className="form-label">Doctor <span style={{ color: 'red' }}>*</span></label>
-              <select className="form-input" required value={formData.doctorId} onChange={e => setFormData({...formData, doctorId: e.target.value})}>
-                {doctors.map(d => (
-                  <option key={d.user_id} value={d.user_id}>{d.name}</option>
-                ))}
-              </select>
-            </div>
+              <div>
+                <label className="form-label">Doctor <span style={{ color: 'red' }}>*</span></label>
+                <select className="form-input" required value={formData.doctorId} onChange={e => setFormData({...formData, doctorId: e.target.value})}>
+                  {doctors.map(d => (
+                    <option key={d.user_id} value={d.user_id}>{d.name}</option>
+                  ))}
+                </select>
+              </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
               <div>
                 <label className="form-label">Consultation Fee (₹)</label>
                 <input 
@@ -192,6 +292,7 @@ export function ReceptionistBillingTab() {
                   value={formData.consFee} onChange={e => setFormData({...formData, consFee: Number(e.target.value)})}
                 />
               </div>
+
               <div>
                 <label className="form-label">Add. Charges (₹)</label>
                 <input 
@@ -201,28 +302,30 @@ export function ReceptionistBillingTab() {
               </div>
             </div>
 
-            <div>
-              <label className="form-label">Discount (₹)</label>
-              <input 
-                type="number" className="form-input" 
-                value={formData.discount} onChange={e => setFormData({...formData, discount: Number(e.target.value)})}
-              />
-            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 2fr', gap: '1.5rem', alignItems: 'flex-end' }}>
+              <div>
+                <label className="form-label">Discount (₹)</label>
+                <input 
+                  type="number" className="form-input" 
+                  value={formData.discount} onChange={e => setFormData({...formData, discount: Number(e.target.value)})}
+                />
+              </div>
 
-            <div style={{ padding: '1rem', background: 'var(--primary-50)', borderRadius: 'var(--radius)', border: '1px dashed var(--primary-300)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontWeight: 600, color: 'var(--primary-700)' }}>Total Amount:</span>
-              <span style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--primary-700)' }}>₹{totalAmount > 0 ? totalAmount : 0}</span>
-            </div>
+              <div style={{ padding: '0.75rem 1rem', background: 'var(--primary-50)', borderRadius: 'var(--radius)', border: '1px dashed var(--primary-300)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontWeight: 600, color: 'var(--primary-700)' }}>Total:</span>
+                <span style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--primary-700)' }}>₹{totalAmount > 0 ? totalAmount : 0}</span>
+              </div>
 
-            <div style={{ paddingTop: '0.5rem' }}>
-              <button type="submit" className="btn-primary" style={{ width: '100%', padding: '0.875rem', fontSize: '1rem', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.5rem' }}>
-                <Receipt size={18} /> Generate Receipt
-              </button>
+              <div>
+                <button type="submit" className="btn-primary" style={{ width: '100%', padding: '0.875rem', fontSize: '1rem', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.5rem' }}>
+                  <Receipt size={18} /> Generate Receipt
+                </button>
+              </div>
             </div>
           </form>
         </div>
 
-        {/* RIGHT COLUMN: INVOICE TABLE */}
+        {/* BOTTOM: INVOICE TABLE */}
         <div className="card" style={{ display: 'flex', flexDirection: 'column' }}>
           <div style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid var(--gray-200)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <h2 style={{ fontSize: '1.125rem', fontWeight: 700, color: 'var(--gray-900)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -243,7 +346,7 @@ export function ReceptionistBillingTab() {
               <thead>
                 <tr style={{ borderBottom: '1px solid var(--gray-200)', color: 'var(--gray-500)', fontSize: '0.875rem', background: 'var(--gray-50)' }}>
                   <th style={{ padding: '1rem 1.5rem', fontWeight: 600 }}>Invoice ID</th>
-                  <th style={{ padding: '1rem 1.5rem', fontWeight: 600 }}>Patient Name</th>
+                  <th style={{ padding: '1rem 1.5rem', fontWeight: 600 }}>Patient Name (ID)</th>
                   <th style={{ padding: '1rem 1.5rem', fontWeight: 600 }}>Doctor</th>
                   <th style={{ padding: '1rem 1.5rem', fontWeight: 600 }}>Date</th>
                   <th style={{ padding: '1rem 1.5rem', fontWeight: 600 }}>Amount</th>
@@ -267,7 +370,10 @@ export function ReceptionistBillingTab() {
                 ) : filteredInvoices.map((inv) => (
                   <tr key={inv.id} style={{ borderBottom: '1px solid var(--gray-100)' }}>
                     <td style={{ padding: '1rem 1.5rem', fontWeight: 600, color: 'var(--primary-600)' }}>{inv.invoice_number}</td>
-                    <td style={{ padding: '1rem 1.5rem', fontWeight: 600, color: 'var(--gray-900)' }}>{inv.patient_name}</td>
+                    <td style={{ padding: '1rem 1.5rem' }}>
+                      <div style={{ fontWeight: 600, color: 'var(--gray-900)' }}>{inv.patient_name}</div>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--gray-500)' }}>ID: PT-{inv.patient_id}</div>
+                    </td>
                     <td style={{ padding: '1rem 1.5rem', color: 'var(--gray-600)' }}>{inv.doctor_name || 'N/A'}</td>
                     <td style={{ padding: '1rem 1.5rem', color: 'var(--gray-600)' }}>{new Date(inv.created_at).toLocaleDateString()}</td>
                     <td style={{ padding: '1rem 1.5rem', fontWeight: 700, color: 'var(--gray-900)' }}>₹{inv.total_amount}</td>
@@ -283,12 +389,29 @@ export function ReceptionistBillingTab() {
                     </td>
                     <td style={{ padding: '1rem 1.5rem', textAlign: 'right' }}>
                       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
-                        <button className="btn-secondary" style={{ padding: '0.35rem', borderRadius: 'var(--radius)', color: 'var(--gray-600)' }} title="View Invoice">
+                        
+                        <button onClick={() => handleWhatsApp(inv)} className="btn-secondary" style={{ padding: '0.35rem', borderRadius: 'var(--radius)', color: '#16a34a', border: '1px solid #16a34a' }} title="Send via WhatsApp">
+                          <MessageCircle size={16} />
+                        </button>
+                        
+                        <button onClick={() => handleViewClick(inv)} className="btn-secondary" style={{ padding: '0.35rem', borderRadius: 'var(--radius)', color: 'var(--gray-600)' }} title="View Invoice">
                           <Eye size={16} />
                         </button>
                         <button className="btn-secondary" style={{ padding: '0.35rem', borderRadius: 'var(--radius)', color: 'var(--gray-600)' }} title="Print Invoice">
                           <Printer size={16} />
                         </button>
+
+                        {inv.status === 'Pending' && (
+                          <button 
+                            onClick={() => handleEditClick(inv)}
+                            className="btn-secondary" 
+                            style={{ padding: '0.35rem', borderRadius: 'var(--radius)', color: 'var(--primary-600)' }}
+                            title="Edit Bill"
+                          >
+                            <Edit size={16} />
+                          </button>
+                        )}
+                        
                         {inv.status === 'Pending' && (
                           <button 
                             onClick={() => handleCollectPayment(inv.id)}
@@ -357,6 +480,125 @@ export function ReceptionistBillingTab() {
         </div>
       )}
 
+      {/* Edit Bill Modal */}
+      {editModalOpen && editingInvoice && (
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 9999,
+          display: 'flex', alignItems: 'center', justifyContent: 'center'
+        }}>
+          <div className="card" style={{ width: '400px', padding: '1.5rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+              <h2 style={{ fontSize: '1.25rem', fontWeight: 700 }}>Edit Invoice: {editingInvoice.invoice_number}</h2>
+              <button onClick={() => setEditModalOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X size={20}/></button>
+            </div>
+            
+            <form onSubmit={handleUpdateInvoice} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+              <div>
+                <label className="form-label">Consultation Fee (₹)</label>
+                <input 
+                  type="number" className="form-input" 
+                  value={editFormData.consFee} onChange={e => setEditFormData({...editFormData, consFee: Number(e.target.value)})}
+                />
+              </div>
+              <div>
+                <label className="form-label">Additional Charges (₹)</label>
+                <input 
+                  type="number" className="form-input" 
+                  value={editFormData.addCharges} onChange={e => setEditFormData({...editFormData, addCharges: Number(e.target.value)})}
+                />
+              </div>
+              <div>
+                <label className="form-label">Discount (₹)</label>
+                <input 
+                  type="number" className="form-input" 
+                  value={editFormData.discount} onChange={e => setEditFormData({...editFormData, discount: Number(e.target.value)})}
+                />
+              </div>
+              
+              <div style={{ padding: '1rem', background: 'var(--primary-50)', borderRadius: 'var(--radius)', border: '1px dashed var(--primary-300)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontWeight: 600, color: 'var(--primary-700)' }}>New Total:</span>
+                <span style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--primary-700)' }}>
+                  ₹{Math.max(0, editFormData.consFee + editFormData.addCharges - editFormData.discount)}
+                </span>
+              </div>
+
+              <div style={{ display: 'flex', gap: '1rem', marginTop: '0.5rem' }}>
+                <button type="button" onClick={() => setEditModalOpen(false)} className="btn-secondary" style={{ flex: 1, padding: '0.75rem' }}>Cancel</button>
+                <button type="submit" className="btn-primary" style={{ flex: 1, padding: '0.75rem' }}>Save Changes</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* View Bill Modal */}
+      {viewModalOpen && viewingInvoice && (
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 9999,
+          display: 'flex', alignItems: 'center', justifyContent: 'center'
+        }}>
+          <div className="card" style={{ width: '450px', padding: '2rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', borderBottom: '1px solid var(--gray-200)', paddingBottom: '1rem' }}>
+              <div>
+                <h2 style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--gray-900)' }}>Sunrise Clinic</h2>
+                <p style={{ fontSize: '0.875rem', color: 'var(--gray-500)' }}>Invoice {viewingInvoice.invoice_number}</p>
+              </div>
+              <button onClick={() => setViewModalOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X size={20} color="var(--gray-500)" /></button>
+            </div>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginBottom: '1.5rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: 'var(--gray-500)', fontSize: '0.875rem' }}>Patient Name</span>
+                <span style={{ fontWeight: 600, color: 'var(--gray-900)' }}>{viewingInvoice.patient_name}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: 'var(--gray-500)', fontSize: '0.875rem' }}>Doctor</span>
+                <span style={{ fontWeight: 600, color: 'var(--gray-900)' }}>Dr. {viewingInvoice.doctor_name || 'N/A'}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: 'var(--gray-500)', fontSize: '0.875rem' }}>Date</span>
+                <span style={{ fontWeight: 600, color: 'var(--gray-900)' }}>{new Date(viewingInvoice.created_at).toLocaleString()}</span>
+              </div>
+            </div>
+
+            <div style={{ borderTop: '1px dashed var(--gray-300)', borderBottom: '1px dashed var(--gray-300)', padding: '1rem 0', display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '1.5rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: 'var(--gray-600)' }}>Consultation Fee</span>
+                <span style={{ fontWeight: 600 }}>₹{viewingInvoice.consultation_fee || 0}</span>
+              </div>
+              {Number(viewingInvoice.additional_charges) > 0 && (
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: 'var(--gray-600)' }}>Additional Charges</span>
+                  <span style={{ fontWeight: 600 }}>₹{viewingInvoice.additional_charges}</span>
+                </div>
+              )}
+              {Number(viewingInvoice.discount) > 0 && (
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: '#d97706' }}>Discount</span>
+                  <span style={{ fontWeight: 600, color: '#d97706' }}>-₹{viewingInvoice.discount}</span>
+                </div>
+              )}
+            </div>
+            
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: '1.125rem', fontWeight: 700, color: 'var(--gray-900)' }}>Total Amount</span>
+              <span style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--primary-600)' }}>₹{viewingInvoice.total_amount}</span>
+            </div>
+            
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.5rem' }}>
+              <span style={{ fontSize: '0.875rem', color: 'var(--gray-500)' }}>Status</span>
+              <span style={{ 
+                padding: '0.25rem 0.75rem', borderRadius: '999px', fontSize: '0.75rem', fontWeight: 600,
+                background: viewingInvoice.status === 'Paid' ? '#D1FAE5' : '#FEF3C7', 
+                color: viewingInvoice.status === 'Paid' ? '#047857' : '#D97706', 
+              }}>
+                {viewingInvoice.status}
+              </span>
+            </div>
+
+          </div>
+        </div>
+      )}
     </div>
   );
 }

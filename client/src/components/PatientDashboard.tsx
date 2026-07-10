@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { 
   LayoutDashboard, Building2, Clock, User, ChevronRight,
   Calendar, FileText, Activity, Stethoscope, Star, MapPin, 
-  Upload, CheckCircle, FilePlus
+  Upload, CheckCircle, FilePlus, Phone
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { getAllTipsAndFacts } from '../utils/healthTips';
@@ -767,18 +767,48 @@ function ClinicDetail({ clinicId, onBack }: { clinicId: number, onBack: () => vo
                 {localProfile?.about || clinic.description || 'No description provided.'}
               </p>
 
-              <h3 style={{ fontSize: '1.125rem', fontWeight: 600, color: 'var(--gray-900)', marginBottom: '1rem' }}>Leading Physician</h3>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '1rem', background: 'var(--primary-50)', borderRadius: 'var(--radius)' }}>
-                <div style={{ width: '48px', height: '48px', borderRadius: '50%', background: 'var(--primary-100)', color: 'var(--primary-600)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <Stethoscope size={24} />
-                </div>
-                <div>
-                  <h4 style={{ fontWeight: 600, color: 'var(--gray-900)', fontSize: '1rem' }}>{clinic.doctor_name || 'Doctor name not specified'}</h4>
-                  <p style={{ color: 'var(--primary-700)', fontSize: '0.875rem' }}>
-                    {clinic.degree || 'Degree not specified'} 
-                    {clinic.experience && ` • ${clinic.experience} Experience`}
-                  </p>
-                </div>
+              <h3 style={{ fontSize: '1.125rem', fontWeight: 600, color: 'var(--gray-900)', marginBottom: '1rem', marginTop: '1.5rem' }}>Available Doctors</h3>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                {clinic.doctors && clinic.doctors.length > 0 ? clinic.doctors.map((doc: any, i: number) => (
+                  <div key={i} style={{ padding: '1rem', background: 'var(--primary-50)', borderRadius: 'var(--radius)', border: '1px solid var(--primary-100)' }}>
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: '1rem' }}>
+                      <div style={{ width: '48px', height: '48px', borderRadius: '50%', background: 'var(--primary-200)', color: 'var(--primary-700)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.25rem', fontWeight: 700 }}>
+                        {doc.name ? doc.name.charAt(0).toUpperCase() : 'D'}
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <h4 style={{ fontWeight: 700, color: 'var(--gray-900)', fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          Dr. {doc.name}
+                          {doc.medical_registration_number && <span style={{ fontSize: '0.75rem', fontWeight: 500, background: '#D1FAE5', color: '#059669', padding: '0.1rem 0.5rem', borderRadius: '999px' }}>Verified</span>}
+                        </h4>
+                        <p style={{ color: 'var(--primary-700)', fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.5rem' }}>
+                          {doc.specialization || 'General Physician'} {doc.qualification && `• ${doc.qualification}`}
+                        </p>
+                        
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', fontSize: '0.75rem', color: 'var(--gray-600)', marginBottom: '0.75rem' }}>
+                          <div><span style={{ fontWeight: 600 }}>Experience:</span> {doc.experience || '0'} Years</div>
+                          <div><span style={{ fontWeight: 600 }}>Fee:</span> ${doc.consultation_fee || '0'}</div>
+                          {doc.languages_spoken && <div><span style={{ fontWeight: 600 }}>Languages:</span> {doc.languages_spoken}</div>}
+                          {doc.working_days && <div><span style={{ fontWeight: 600 }}>Timing:</span> {doc.working_days} {doc.available_time}</div>}
+                        </div>
+
+                        {doc.bio && (
+                          <div style={{ fontSize: '0.8125rem', color: 'var(--gray-700)', borderTop: '1px solid var(--primary-200)', paddingTop: '0.75rem', marginTop: '0.5rem' }}>
+                            <span style={{ fontWeight: 600 }}>About: </span> {doc.bio}
+                          </div>
+                        )}
+                        {doc.areas_of_expertise && (
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem', marginTop: '0.75rem' }}>
+                            {doc.areas_of_expertise.split(',').map((exp: string, idx: number) => (
+                              <span key={idx} style={{ fontSize: '0.7rem', background: 'white', border: '1px solid var(--primary-200)', padding: '0.2rem 0.5rem', borderRadius: '4px' }}>{exp.trim()}</span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )) : (
+                  <p style={{ color: 'var(--gray-500)', fontSize: '0.875rem' }}>No doctors listed for this clinic.</p>
+                )}
               </div>
             </div>
           </div>

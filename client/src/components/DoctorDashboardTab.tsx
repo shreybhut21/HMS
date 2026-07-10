@@ -4,12 +4,16 @@ import {
   ChevronRight, Plus, Eye, CheckCircle, X, FilePlus, 
   User, ActivitySquare, AlertCircle
 } from 'lucide-react';
+import { DoctorConsultation } from './DoctorConsultation';
 
 // --- COMPONENTS ---
 
 export function DoctorDashboardTab({ user }: { user: any }) {
   const [showProfileDrawer, setShowProfileDrawer] = useState(false);
   const [showConsultationModal, setShowConsultationModal] = useState(false);
+  const [showWalkinModal, setShowWalkinModal] = useState(false);
+  const [walkinForm, setWalkinForm] = useState({ name: '', phone: '' });
+  const [walkinLoading, setWalkinLoading] = useState(false);
   const [selectedPatient, setSelectedPatient] = useState<any>(null);
   const [queue, setQueue] = useState({ current_token: 0, last_issued_token: 0 });
 
@@ -77,6 +81,31 @@ export function DoctorDashboardTab({ user }: { user: any }) {
     setShowConsultationModal(true);
   };
 
+  const handleWalkinSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setWalkinLoading(true);
+    try {
+      const token = localStorage.getItem('medicare_token');
+      const res = await fetch('http://localhost:5000/api/hospital/walkin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ name: walkinForm.name, phone: walkinForm.phone, doctor_id: user.id, reason: 'Walk-in Consultation' })
+      });
+      if (res.ok) {
+        const appointment = await res.json();
+        setShowWalkinModal(false);
+        setWalkinForm({ name: '', phone: '' });
+        openConsultation(appointment);
+      } else {
+        console.error('Walkin registration failed');
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setWalkinLoading(false);
+    }
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
       
@@ -93,7 +122,7 @@ export function DoctorDashboardTab({ user }: { user: any }) {
             <p style={{ color: 'var(--primary-600)', fontWeight: 500 }}>Cardiologist <span style={{ color: 'var(--gray-400)', margin: '0 0.5rem' }}>|</span> {new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
           </div>
         </div>
-        <button className="btn-primary" onClick={() => openConsultation({ name: 'Walk-in Patient' })}>
+        <button className="btn-primary" onClick={() => setShowWalkinModal(true)}>
           <Plus size={18} /> Quick Consult
         </button>
       </div>
@@ -329,68 +358,43 @@ export function DoctorDashboardTab({ user }: { user: any }) {
         </div>
       )}
 
-      {/* CONSULTATION MODAL */}
       {showConsultationModal && selectedPatient && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
-          <div className="card" style={{ width: '100%', maxWidth: '800px', padding: '2rem', maxHeight: '90vh', overflowY: 'auto', position: 'relative' }}>
-            <button onClick={() => setShowConsultationModal(false)} style={{ position: 'absolute', top: '1.5rem', right: '1.5rem', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--gray-500)' }}><X size={24} /></button>
-            
-            <div style={{ marginBottom: '1.5rem', borderBottom: '1px solid var(--gray-200)', paddingBottom: '1.5rem' }}>
-              <h2 style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--gray-900)' }}>Consultation: {selectedPatient.patientName || selectedPatient.name}</h2>
-              <p style={{ color: 'var(--gray-500)' }}>Enter clinical notes and prescribe medication.</p>
-            </div>
+        <DoctorConsultation 
+          patient={selectedPatient} 
+          onClose={() => setShowConsultationModal(false)}
+          onComplete={() => {
+            setShowConsultationModal(false);
+          }}
+          user={user}
+        />
+      )}
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '1.5rem' }}>
+      {/* WALKIN REGISTRATION MODAL */}
+      {showWalkinModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
+          <div className="card" style={{ width: '100%', maxWidth: '400px', padding: '2rem', position: 'relative' }}>
+            <button onClick={() => setShowWalkinModal(false)} style={{ position: 'absolute', top: '1.5rem', right: '1.5rem', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--gray-500)' }}><X size={24} /></button>
+            
+            <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--gray-900)', marginBottom: '0.5rem' }}>Walk-in Consultation</h2>
+            <p style={{ color: 'var(--gray-500)', fontSize: '0.875rem', marginBottom: '1.5rem' }}>Enter details to find or register a patient.</p>
+
+            <form onSubmit={handleWalkinSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
               <div>
-                <label className="form-label">Symptoms</label>
-                <textarea className="form-input" rows={3} placeholder="Patient complains of..."></textarea>
+                <label className="form-label">Phone Number *</label>
+                <input type="tel" required className="form-input" placeholder="e.g. +91 9876543210" value={walkinForm.phone} onChange={e => setWalkinForm({...walkinForm, phone: e.target.value})} />
               </div>
               <div>
-                <label className="form-label">Diagnosis</label>
-                <input type="text" className="form-input" placeholder="e.g. Viral Infection" />
-              </div>
-              <div>
-                <label className="form-label">Doctor Notes</label>
-                <textarea className="form-input" rows={3} placeholder="Additional observations..."></textarea>
+                <label className="form-label">Patient Name *</label>
+                <input type="text" required className="form-input" placeholder="e.g. Rahul Kumar" value={walkinForm.name} onChange={e => setWalkinForm({...walkinForm, name: e.target.value})} />
               </div>
               
-              <div style={{ background: 'var(--gray-50)', padding: '1.5rem', borderRadius: 'var(--radius-lg)', border: '1px solid var(--gray-200)' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                  <h3 style={{ fontWeight: 600, color: 'var(--gray-900)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Pill size={18} /> E-Prescription</h3>
-                  <button className="btn-secondary" style={{ padding: '0.4rem 0.75rem', fontSize: '0.75rem' }}><Plus size={14} /> Add Medicine</button>
-                </div>
-                
-                <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: '1rem', marginBottom: '0.5rem' }}>
-                  <label className="form-label" style={{ marginBottom: 0 }}>Medicine Name</label>
-                  <label className="form-label" style={{ marginBottom: 0 }}>Dosage</label>
-                  <label className="form-label" style={{ marginBottom: 0 }}>Duration</label>
-                </div>
-                
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                  {/* Mock Row 1 */}
-                  <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: '1rem' }}>
-                    <input type="text" className="form-input" placeholder="e.g. Paracetamol 500mg" defaultValue="Paracetamol 500mg" />
-                    <input type="text" className="form-input" placeholder="e.g. 1-0-1" defaultValue="1-0-1" />
-                    <input type="text" className="form-input" placeholder="e.g. 5 days" defaultValue="5 days" />
-                  </div>
-                  {/* Mock Row 2 */}
-                  <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: '1rem' }}>
-                    <input type="text" className="form-input" placeholder="e.g. Azithromycin 250mg" />
-                    <input type="text" className="form-input" placeholder="e.g. 1-0-0" />
-                    <input type="text" className="form-input" placeholder="e.g. 3 days" />
-                  </div>
-                </div>
-              </div>
-            </div>
-            
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem', marginTop: '2rem' }}>
-              <button onClick={() => setShowConsultationModal(false)} className="btn-secondary">Save Draft</button>
-              <button onClick={() => setShowConsultationModal(false)} className="btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}><CheckCircle size={18} /> Complete Consultation</button>
-            </div>
+              <button type="submit" disabled={walkinLoading} className="btn-primary" style={{ marginTop: '1rem', width: '100%' }}>
+                {walkinLoading ? 'Loading...' : 'Start Consultation'}
+              </button>
+            </form>
           </div>
         </div>
       )}
-
     </div>
   );
 }

@@ -52,7 +52,7 @@ app.post('/api/auth/register', async (req, res) => {
     } else {
       const [result] = await db.query('INSERT INTO users (name, email, password, type) VALUES (?, ?, ?, ?)', [name, email, hashedPassword, 'patient']);
       const user = { id: result.insertId, name, email, type: 'patient' };
-      const token = jwt.sign({ id: user.id, type: user.type }, JWT_SECRET, { expiresIn: '1d' });
+      const token = jwt.sign({ id: user.id, type: user.type }, JWT_SECRET, { expiresIn: '7d' });
       return res.status(201).json({ message: 'Registration successful', user, token, pending: false });
     }
   } catch (error) {
@@ -82,7 +82,7 @@ app.post('/api/auth/login', async (req, res) => {
       hospitalName = user.name;
     }
 
-    const token = jwt.sign({ id: user.id, type: user.type, hospitalName }, JWT_SECRET, { expiresIn: '1d' });
+    const token = jwt.sign({ id: user.id, type: user.type, hospitalName }, JWT_SECRET, { expiresIn: '7d' });
     const { password: _, ...userWithoutPassword } = user;
     res.json({ user: { ...userWithoutPassword, hospitalName }, token });
   } catch (error) {
@@ -95,12 +95,16 @@ app.post('/api/auth/login', async (req, res) => {
 // Middleware to verify any authenticated user
 const verifyToken = (req, res, next) => {
   const token = req.headers.authorization?.split(' ')[1];
-  if (!token) return res.status(401).json({ error: 'No token provided' });
+  if (!token) {
+    console.log('verifyToken: No token provided');
+    return res.status(401).json({ error: 'No token provided' });
+  }
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
     req.user = decoded;
     next();
   } catch (err) {
+    console.log('verifyToken: Invalid or expired token:', err.message, 'Token received:', token);
     res.status(401).json({ error: 'Invalid or expired token' });
   }
 };
@@ -228,7 +232,9 @@ app.get('/api/patient/clinics/:id', verifyToken, async (req, res) => {
     if (clinics.length === 0) return res.status(404).json({ error: 'Clinic not found' });
     
     const [doctors] = await db.query(`
-      SELECT tm.user_id as id, u.name, tm.specialization, tm.qualification, tm.experience, tm.consultation_fee
+      SELECT tm.user_id as id, u.name, tm.specialization, tm.qualification, tm.experience, tm.consultation_fee,
+             tm.gender, tm.medical_registration_number, tm.bio, tm.languages_spoken, tm.areas_of_expertise,
+             tm.working_days, tm.available_time, tm.shift_timing
       FROM team_members tm
       JOIN users u ON tm.user_id = u.id
       WHERE tm.hospital_id = ? AND tm.role = 'Doctor'
@@ -586,13 +592,21 @@ app.post('/api/hospital/walkin', verifyToken, async (req, res) => {
     const assignedToken = queueRows[0].last_issued_token;
 
     // Create Appointment
-    await connection.query(
+    const [insertResult] = await connection.query(
       'INSERT INTO appointments (patient_id, hospital_id, doctor_id, appointment_date, appointment_time, problem_description, status, token_number) VALUES (?, ?, ?, ?, ?, ?, "Approved", ?)',
       [patientId, hospitalId, doctor_id, date, new Date().toTimeString().split(' ')[0].substring(0,5), reason || 'Walk-in', assignedToken]
     );
 
+    const [newAppointment] = await connection.query(`
+      SELECT a.*, u.name as patient_name, pp.phone
+      FROM appointments a
+      JOIN users u ON a.patient_id = u.id
+      LEFT JOIN patient_profiles pp ON u.id = pp.user_id
+      WHERE a.id = ?
+    `, [insertResult.insertId]);
+
     await connection.commit();
-    res.status(201).json({ message: 'Walk-in registered', token_number: assignedToken });
+    res.status(201).json(newAppointment[0]);
   } catch (error) {
     await connection.rollback();
     console.error(error);
@@ -654,10 +668,13 @@ app.get('/api/hospital/invoices', verifyToken, async (req, res) => {
       if (teamRows.length > 0) hospitalId = teamRows[0].hospital_id;
     }
     const [invoices] = await db.query(`
-      SELECT i.*, p.name as patient_name, d.name as doctor_name
+      SELECT i.*, p.name as patient_name, d.name as doctor_name, pp.phone as patient_phone, i.prescription_uid, h.name as hospital_name, hp.phone as hospital_phone, hp.address as hospital_address
       FROM invoices i
       JOIN users p ON i.patient_id = p.id
+      LEFT JOIN patient_profiles pp ON p.id = pp.user_id
       LEFT JOIN users d ON i.doctor_id = d.id
+      LEFT JOIN users h ON i.hospital_id = h.id
+      LEFT JOIN hospital_profiles hp ON i.hospital_id = hp.hospital_id
       WHERE i.hospital_id = ?
       ORDER BY i.created_at DESC
     `, [hospitalId]);
@@ -699,6 +716,21 @@ app.post('/api/hospital/invoices', verifyToken, async (req, res) => {
     res.status(201).json({ message: 'Invoice created' });
   } catch (error) {
     res.status(500).json({ error: 'Error creating invoice' });
+  }
+});
+
+// PUT /api/hospital/invoices/:id
+app.put('/api/hospital/invoices/:id', verifyToken, async (req, res) => {
+  try {
+    const { consultation_fee, additional_charges, discount } = req.body;
+    const total = (Number(consultation_fee) || 0) + (Number(additional_charges) || 0) - (Number(discount) || 0);
+    await db.query(
+      'UPDATE invoices SET consultation_fee = ?, additional_charges = ?, discount = ?, total_amount = ? WHERE id = ?',
+      [consultation_fee || 0, additional_charges || 0, discount || 0, total, req.params.id]
+    );
+    res.json({ message: 'Invoice updated successfully' });
+  } catch (error) {
+    res.status(500).json({ error: 'Error updating invoice' });
   }
 });
 
@@ -747,7 +779,8 @@ app.get('/api/hospital/appointments', verifyToken, async (req, res) => {
 
     const [appointments] = await db.query(`
       SELECT a.id, DATE_FORMAT(a.appointment_date, '%Y-%m-%d') as appointment_date, a.appointment_time, a.problem_description, a.status, a.token_number,
-             u.id as patient_id, u.name as patient_name, u.email as patient_email, pp.gender, pp.phone, pp.blood_group, d.name as doctor_name
+             u.id as patient_id, u.name as patient_name, u.email as patient_email, pp.gender, pp.phone, pp.blood_group, 
+             pp.height, pp.weight, pp.medical_history, pp.allergies, pp.chronic_diseases, d.name as doctor_name
       FROM appointments a
       JOIN users u ON a.patient_id = u.id
       LEFT JOIN patient_profiles pp ON u.id = pp.user_id
@@ -767,22 +800,40 @@ app.get('/api/hospital/appointments', verifyToken, async (req, res) => {
 app.get('/api/hospital/patients', verifyToken, async (req, res) => {
   try {
     let hospitalId = req.user.id;
-    if (req.user.type !== 'hospital') {
+    let doctorId = null;
+    
+    if (req.user.type === 'doctor') {
+      doctorId = req.user.id;
+      const [teamRows] = await db.query('SELECT hospital_id FROM team_members WHERE user_id = ?', [req.user.id]);
+      if (teamRows.length > 0) hospitalId = teamRows[0].hospital_id;
+    } else if (req.user.type !== 'hospital') {
       const [teamRows] = await db.query('SELECT hospital_id FROM team_members WHERE user_id = ?', [req.user.id]);
       if (teamRows.length > 0) hospitalId = teamRows[0].hospital_id;
     }
 
-    const [patients] = await db.query(`
-      SELECT u.id, u.name, pp.phone, pp.gender, pp.blood_group, pp.medical_history, pp.allergies, pp.chronic_diseases, pp.current_medications,
+    let queryStr = `
+      SELECT u.id, u.name, pp.phone, pp.gender, pp.blood_group, pp.medical_history, pp.allergies, pp.chronic_diseases, pp.current_medications, pp.past_surgeries,
+             pp.height, pp.weight, pp.date_of_birth,
              MAX(a.appointment_date) as lastVisit,
              COUNT(a.id) as totalVisits
       FROM appointments a
       JOIN users u ON a.patient_id = u.id
       LEFT JOIN patient_profiles pp ON u.id = pp.user_id
-      WHERE a.hospital_id = ?
+      WHERE a.hospital_id = ? 
+    `;
+    const queryParams = [hospitalId];
+
+    if (doctorId) {
+      queryStr += ` AND a.doctor_id = ? `;
+      queryParams.push(doctorId);
+    }
+
+    queryStr += `
       GROUP BY u.id
       ORDER BY lastVisit DESC
-    `, [hospitalId]);
+    `;
+
+    const [patients] = await db.query(queryStr, queryParams);
 
     res.json(patients);
   } catch (error) {
@@ -802,10 +853,17 @@ app.get('/api/hospital/prescriptions', verifyToken, async (req, res) => {
 
     let queryStr = `
       SELECT p.id, p.prescription_uid, p.diagnosis, p.advice, p.follow_up_date, p.status, p.created_at,
-             u.id as patient_id, u.name as patientName, pp.phone, pp.gender, pp.blood_group
+             u.id as patient_id, u.name as patientName, pp.phone, pp.gender, pp.blood_group, pp.date_of_birth,
+             d.name as doctor_name, tm.qualification as doctor_qualification, tm.medical_registration_number, tm.phone as doctor_phone,
+             h.name as hospital_name, hp.address as hospital_address, hp.phone as hospital_phone
       FROM prescriptions p
       JOIN users u ON p.patient_id = u.id
       LEFT JOIN patient_profiles pp ON u.id = pp.user_id
+      LEFT JOIN appointments a ON p.appointment_id = a.id
+      LEFT JOIN users d ON a.doctor_id = d.id
+      LEFT JOIN team_members tm ON a.doctor_id = tm.user_id
+      LEFT JOIN users h ON p.hospital_id = h.id
+      LEFT JOIN hospital_profiles hp ON p.hospital_id = hp.hospital_id
       WHERE p.hospital_id = ?
     `;
     const queryParams = [hospitalId];
@@ -834,6 +892,43 @@ app.get('/api/hospital/prescriptions', verifyToken, async (req, res) => {
   }
 });
 
+// GET /api/hospital/prescriptions/secure/:uid
+app.get('/api/hospital/prescriptions/secure/:uid', verifyToken, async (req, res) => {
+  try {
+    const uid = req.params.uid;
+    const [prescriptions] = await db.query(`
+      SELECT p.*, u.name as patient_name, d.name as doctor_name, h.name as hospital_name, a.appointment_date, a.appointment_time, pp.phone as patient_phone, hp.phone as hospital_phone, hp.address as hospital_address
+      FROM prescriptions p
+      JOIN users u ON p.patient_id = u.id
+      LEFT JOIN patient_profiles pp ON u.id = pp.user_id
+      LEFT JOIN appointments a ON p.appointment_id = a.id
+      LEFT JOIN users d ON a.doctor_id = d.id
+      LEFT JOIN users h ON p.hospital_id = h.id
+      LEFT JOIN hospital_profiles hp ON p.hospital_id = hp.hospital_id
+      WHERE p.prescription_uid = ?
+    `, [uid]);
+    
+    if (prescriptions.length === 0) return res.status(404).json({ error: 'Prescription not found' });
+    
+    const prescription = prescriptions[0];
+    
+    // Allow if user is doctor or hospital or admin
+    if (req.user.type !== 'hospital' && req.user.type !== 'doctor' && req.user.type !== 'admin') {
+      return res.status(403).json({ error: 'Not authorized to view this prescription securely' });
+    }
+
+    const [medicines] = await db.query(
+      'SELECT * FROM prescription_medicines WHERE prescription_id = ?',
+      [prescription.id]
+    );
+    
+    res.json({ ...prescription, medicines });
+  } catch (error) {
+    console.error('Secure prescription fetch error:', error);
+    res.status(500).json({ error: 'Error fetching prescription' });
+  }
+});
+
 // POST /api/hospital/prescriptions
 app.post('/api/hospital/prescriptions', verifyToken, async (req, res) => {
   const connection = await db.getConnection();
@@ -844,7 +939,7 @@ app.post('/api/hospital/prescriptions', verifyToken, async (req, res) => {
       if (teamRows.length > 0) hospitalId = teamRows[0].hospital_id;
     }
 
-    const { patient_id, appointment_id, diagnosis, advice, follow_up_date, status, medicines } = req.body;
+    const { patient_id, appointment_id, diagnosis, advice, follow_up_date, status, medicines, consultation_fee } = req.body;
     
     if (!patient_id || !diagnosis) {
       return res.status(400).json({ error: 'patient_id and diagnosis are required' });
@@ -871,7 +966,16 @@ app.post('/api/hospital/prescriptions', verifyToken, async (req, res) => {
     }
 
     await connection.commit();
-    res.status(201).json({ message: 'Prescription created', id: prescriptionId, prescription_uid });
+
+    if (consultation_fee && Number(consultation_fee) > 0) {
+      const invoiceNumber = 'INV-' + Math.floor(10000 + Math.random() * 90000);
+      await connection.query(`
+        INSERT INTO invoices (invoice_number, hospital_id, patient_id, doctor_id, consultation_fee, additional_charges, discount, total_amount, status, prescription_uid)
+        VALUES (?, ?, ?, ?, ?, 0, 0, ?, 'Pending', ?)
+      `, [invoiceNumber, hospitalId, patient_id, req.user.id, consultation_fee, consultation_fee, prescription_uid]);
+    }
+
+    res.status(201).json({ message: 'Prescription saved successfully', id: prescriptionId, prescription_uid });
   } catch (error) {
     await connection.rollback();
     console.error('Prescription create error:', error);
@@ -914,4 +1018,196 @@ app.post('/api/admin/reject/:id', verifyAdmin, async (req, res) => {
 });
 
 const PORT = 5000;
+// PUBLIC APIs (No Token Required)
+
+// GET /api/public/invoices/:invoiceNumber
+app.get('/api/public/invoices/:invoiceNumber', async (req, res) => {
+  try {
+    const { phone } = req.query;
+    if (!phone) return res.status(400).json({ error: 'Phone number is required for verification' });
+
+    const [invoices] = await db.query(`
+      SELECT i.*, p.name as patient_name, d.name as doctor_name, h.name as hospital_name, pp.phone as patient_phone, hp.phone as hospital_phone, hp.address as hospital_address
+      FROM invoices i
+      JOIN users p ON i.patient_id = p.id
+      LEFT JOIN patient_profiles pp ON p.id = pp.user_id
+      LEFT JOIN users d ON i.doctor_id = d.id
+      LEFT JOIN users h ON i.hospital_id = h.id
+      LEFT JOIN hospital_profiles hp ON i.hospital_id = hp.hospital_id
+      WHERE i.invoice_number = ?
+    `, [req.params.invoiceNumber]);
+    
+    if (invoices.length === 0) return res.status(404).json({ error: 'Invoice not found' });
+    
+    if (invoices[0].patient_phone !== phone) {
+      return res.status(401).json({ error: 'Verification failed. Incorrect phone number.' });
+    }
+
+    res.json(invoices[0]);
+  } catch (error) {
+    res.status(500).json({ error: 'Error fetching invoice' });
+  }
+});
+
+// GET /api/public/prescriptions/:prescriptionUid
+app.get('/api/public/prescriptions/:prescriptionUid', async (req, res) => {
+  try {
+    const { phone } = req.query;
+    if (!phone) return res.status(400).json({ error: 'Phone number is required for verification' });
+
+    let uid = req.params.prescriptionUid;
+    
+    // Support RX-{InvoiceNumber} format
+    if (uid.startsWith('RX-') && !isNaN(uid.split('-')[1])) {
+      const invoiceNum = 'INV-' + uid.split('-')[1];
+      const [invRows] = await db.query('SELECT prescription_uid FROM invoices WHERE invoice_number = ?', [invoiceNum]);
+      if (invRows.length > 0 && invRows[0].prescription_uid) {
+        uid = invRows[0].prescription_uid;
+      }
+    }
+
+    const [prescriptions] = await db.query(`
+      SELECT p.*, u.name as patient_name, d.name as doctor_name, h.name as hospital_name, a.appointment_date, a.appointment_time, pp.phone as patient_phone, hp.phone as hospital_phone, hp.address as hospital_address
+      FROM prescriptions p
+      JOIN users u ON p.patient_id = u.id
+      LEFT JOIN patient_profiles pp ON u.id = pp.user_id
+      LEFT JOIN appointments a ON p.appointment_id = a.id
+      LEFT JOIN users d ON a.doctor_id = d.id
+      LEFT JOIN users h ON p.hospital_id = h.id
+      LEFT JOIN hospital_profiles hp ON p.hospital_id = hp.hospital_id
+      WHERE p.prescription_uid = ?
+    `, [uid]);
+    
+    if (prescriptions.length === 0) return res.status(404).json({ error: 'Prescription not found' });
+    
+    const prescription = prescriptions[0];
+    
+    if (prescription.patient_phone !== phone) {
+      return res.status(401).json({ error: 'Verification failed. Incorrect phone number.' });
+    }
+
+    const [medicines] = await db.query(
+      'SELECT * FROM prescription_medicines WHERE prescription_id = ?',
+      [prescription.id]
+    );
+    
+    res.json({ ...prescription, medicines });
+  } catch (error) {
+    res.status(500).json({ error: 'Error fetching prescription' });
+  }
+});
+
+// GET /api/doctor/profile
+app.get('/api/doctor/profile', verifyToken, async (req, res) => {
+  try {
+    if (req.user.type !== 'doctor') return res.status(403).json({ error: 'Access denied' });
+
+    const [profiles] = await db.query(`
+      SELECT 
+        u.id, u.name, u.email, u.created_at,
+        tm.phone, tm.role, tm.specialization, tm.qualification, tm.experience, 
+        tm.consultation_fee, tm.working_days, tm.available_time, tm.shift_timing, 
+        tm.department, tm.gender, tm.date_of_birth, tm.medical_registration_number, 
+        tm.bio, tm.languages_spoken, tm.areas_of_expertise, tm.hospital_id,
+        h.name as hospital_name
+      FROM users u
+      LEFT JOIN team_members tm ON u.id = tm.user_id
+      LEFT JOIN users h ON tm.hospital_id = h.id
+      WHERE u.id = ?
+    `, [req.user.id]);
+
+    if (profiles.length === 0) return res.status(404).json({ error: 'Doctor not found' });
+    const profile = profiles[0];
+
+    // Compute stats
+    const [statsResult] = await db.query(`
+      SELECT 
+        (SELECT COUNT(DISTINCT patient_id) FROM appointments WHERE doctor_id = ?) as totalPatients,
+        (SELECT COUNT(*) FROM appointments WHERE doctor_id = ? AND MONTH(appointment_date) = MONTH(CURRENT_DATE())) as appointmentsThisMonth,
+        (SELECT COUNT(*) FROM prescriptions p JOIN appointments a ON p.appointment_id = a.id WHERE a.doctor_id = ?) as prescriptionsCreated
+    `, [req.user.id, req.user.id, req.user.id]);
+    
+    profile.stats = {
+      totalPatients: statsResult[0].totalPatients || 0,
+      appointmentsThisMonth: statsResult[0].appointmentsThisMonth || 0,
+      prescriptionsCreated: statsResult[0].prescriptionsCreated || 0,
+      rating: 4.8 // Mock rating
+    };
+
+    res.json(profile);
+  } catch (error) {
+    console.error('Fetch doctor profile error:', error);
+    res.status(500).json({ error: 'Error fetching profile' });
+  }
+});
+
+// PUT /api/doctor/profile
+app.put('/api/doctor/profile', verifyToken, async (req, res) => {
+  try {
+    if (req.user.type !== 'doctor') return res.status(403).json({ error: 'Access denied' });
+    const { 
+      name, phone, specialization, qualification, experience, 
+      medical_registration_number, consultation_fee, department,
+      gender, date_of_birth, bio, languages_spoken, areas_of_expertise,
+      working_days, available_time
+    } = req.body;
+
+    await db.query('UPDATE users SET name = ? WHERE id = ?', [name, req.user.id]);
+    
+    // Check if team member exists
+    const [existing] = await db.query('SELECT user_id FROM team_members WHERE user_id = ?', [req.user.id]);
+    if (existing.length > 0) {
+      await db.query(`
+        UPDATE team_members SET 
+          phone = ?, specialization = ?, qualification = ?, experience = ?,
+          medical_registration_number = ?, consultation_fee = ?, department = ?,
+          gender = ?, date_of_birth = ?, bio = ?, languages_spoken = ?, areas_of_expertise = ?,
+          working_days = ?, available_time = ?
+        WHERE user_id = ?
+      `, [
+        phone, specialization, qualification, experience,
+        medical_registration_number, consultation_fee, department,
+        gender, date_of_birth || null, bio, languages_spoken, areas_of_expertise,
+        working_days, available_time,
+        req.user.id
+      ]);
+    } else {
+      await db.query(`
+        INSERT INTO team_members (
+          user_id, role, phone, specialization, qualification, experience,
+          medical_registration_number, consultation_fee, department,
+          gender, date_of_birth, bio, languages_spoken, areas_of_expertise,
+          working_days, available_time
+        ) VALUES (?, 'Doctor', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `, [
+        req.user.id, phone, specialization, qualification, experience,
+        medical_registration_number, consultation_fee, department,
+        gender, date_of_birth || null, bio, languages_spoken, areas_of_expertise,
+        working_days, available_time
+      ]);
+    }
+
+    res.json({ message: 'Profile updated successfully' });
+  } catch (error) {
+    console.error('Update doctor profile error:', error);
+    res.status(500).json({ error: 'Error updating profile' });
+  }
+});
+
+// PUT /api/doctor/profile/security
+app.put('/api/doctor/profile/security', verifyToken, async (req, res) => {
+  try {
+    if (req.user.type !== 'doctor') return res.status(403).json({ error: 'Access denied' });
+    const { newPassword } = req.body;
+    if (!newPassword || newPassword.length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' });
+    const bcrypt = require('bcryptjs');
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    await db.query('UPDATE users SET password = ? WHERE id = ?', [hashedPassword, req.user.id]);
+    res.json({ message: 'Password updated successfully' });
+  } catch (error) {
+    console.error('Password update error:', error);
+    res.status(500).json({ error: 'Error updating password' });
+  }
+});
+
 app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));

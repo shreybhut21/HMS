@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Users, Search, Filter, Calendar, Activity, FileText, Pill, ChevronRight, User, Phone, Mail, Clock, CheckCircle, AlertTriangle, FilePlus, Eye, Download, X, Heart, Thermometer, Weight, FileSpreadsheet, UserPlus } from 'lucide-react';
+import { Link } from 'react-router-dom';
 
 export function DoctorPatientsTab() {
   const [searchTerm, setSearchTerm] = useState('');
@@ -10,9 +11,48 @@ export function DoctorPatientsTab() {
   const fetchPatients = async () => {
     try {
       const token = localStorage.getItem('medicare_token');
-      const res = await fetch('http://localhost:5000/api/hospital/patients', { headers: { 'Authorization': `Bearer ${token}` } });
-      if (res.ok) {
-        setPatients(await res.json());
+      const [patientsRes, prescriptionsRes] = await Promise.all([
+        fetch('http://localhost:5000/api/hospital/patients', { headers: { 'Authorization': `Bearer ${token}` } }),
+        fetch('http://localhost:5000/api/hospital/prescriptions', { headers: { 'Authorization': `Bearer ${token}` } })
+      ]);
+
+      if (patientsRes.ok && prescriptionsRes.ok) {
+        const patientsData = await patientsRes.json();
+        const prescriptionsData = await prescriptionsRes.json();
+
+        setPatients(patientsData.map((d: any) => {
+          const patientPrescriptions = prescriptionsData.filter((p: any) => p.patient_id === d.id);
+          const visits = patientPrescriptions.map((p: any) => ({
+            date: p.created_at,
+            diagnosis: p.diagnosis || 'Routine Checkup',
+            prescription: true,
+            prescription_uid: p.prescription_uid
+          }));
+
+          return {
+            ...d,
+            bloodGroup: d.blood_group || 'Unknown',
+            badges: d.chronic_diseases ? d.chronic_diseases.split(',').map((s:string) => s.trim()) : [],
+            age: d.date_of_birth ? Math.floor((new Date().getTime() - new Date(d.date_of_birth).getTime()) / 31557600000) : 'N/A',
+            gender: d.gender || 'Unknown',
+            vitals: {
+              bp: '--',
+              temp: '--',
+              weight: d.weight ? `${d.weight} kg` : '--',
+              bmi: d.weight && d.height ? (parseFloat(d.weight) / ((parseFloat(d.height)/100) ** 2)).toFixed(1) : '--'
+            },
+            history: {
+              medications: d.current_medications ? d.current_medications.split(',').map((s:string)=>s.trim()) : ['None recorded'],
+              allergies: d.allergies ? d.allergies.split(',').map((s:string)=>s.trim()) : ['None known'],
+              surgeries: d.past_surgeries ? d.past_surgeries.split(',').map((s:string)=>s.trim()) : ['No previous surgeries'],
+              family: ['No notable family history'],
+              lifestyle: { smoking: 'Unknown', alcohol: 'Unknown', exercise: 'Unknown' }
+            },
+            visits: visits,
+            records: [],
+            followUp: { date: null, notes: 'No notes available', status: 'None' }
+          };
+        }));
       }
     } catch (err) {
       console.error(err);
@@ -31,9 +71,9 @@ export function DoctorPatientsTab() {
 
   const filteredPatients = useMemo(() => {
     return patients.filter(pt => {
-      const matchesSearch = pt.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                            pt.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                            pt.phone.includes(searchTerm);
+      const matchesSearch = pt.name?.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                            String(pt.id).toLowerCase().includes(searchTerm.toLowerCase()) ||
+                            pt.phone?.includes(searchTerm);
       
       let matchesFilter = true;
       if (filter === 'Recent Patients') {
@@ -41,12 +81,12 @@ export function DoctorPatientsTab() {
       } else if (filter === 'Follow-Up Patients') {
         matchesFilter = pt.status === 'Follow-Up Required';
       } else if (filter === 'Chronic Patients') {
-        matchesFilter = pt.badges.length > 0;
+        matchesFilter = pt.badges && pt.badges.length > 0;
       }
 
-      return matchesSearch && matchesFilter;
+    return matchesSearch && matchesFilter;
     });
-  }, [searchTerm, filter]);
+  }, [patients, searchTerm, filter]);
 
   const renderStatusBadge = (status: string) => {
     switch(status) {
@@ -171,7 +211,7 @@ export function DoctorPatientsTab() {
               <tbody>
                 {filteredPatients.map((pt) => (
                   <tr key={pt.id} style={{ borderBottom: '1px solid var(--gray-100)', transition: 'background 0.2s', cursor: 'pointer' }} onClick={() => setSelectedPatient(pt)} onMouseEnter={e => e.currentTarget.style.background = 'var(--gray-50)'} onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-                    <td style={{ padding: '1rem 0.5rem', fontWeight: 600, color: 'var(--primary-600)' }}>{pt.id}</td>
+                    <td style={{ padding: '1rem 0.5rem', fontWeight: 600, color: 'var(--primary-600)' }}>PT-{pt.id}</td>
                     <td style={{ padding: '1rem 0.5rem' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                         <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: 'var(--primary-100)', color: 'var(--primary-600)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.875rem', fontWeight: 'bold' }}>
@@ -353,7 +393,13 @@ export function DoctorPatientsTab() {
                           <div>
                             <p style={{ fontWeight: 700, color: 'var(--gray-900)' }}>{new Date(visit.date).toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' })}</p>
                             <p style={{ color: 'var(--gray-700)', fontSize: '0.875rem', marginTop: '0.25rem' }}><span style={{ fontWeight: 600 }}>Diagnosis:</span> {visit.diagnosis}</p>
-                            {visit.prescription && <p style={{ color: 'var(--primary-600)', fontSize: '0.75rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.25rem', marginTop: '0.5rem' }}><Pill size={12} /> Prescription Generated</p>}
+                            {visit.prescription && visit.prescription_uid && (
+                              <Link to={`/prescription/${visit.prescription_uid}`} target="_blank" style={{ textDecoration: 'none' }}>
+                                <p style={{ color: 'var(--primary-600)', fontSize: '0.75rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.25rem', marginTop: '0.5rem', cursor: 'pointer' }}>
+                                  <Pill size={12} /> View Prescription
+                                </p>
+                              </Link>
+                            )}
                           </div>
                         </div>
                       ))}

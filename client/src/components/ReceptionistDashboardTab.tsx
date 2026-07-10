@@ -39,10 +39,11 @@ export function ReceptionistDashboardTab({ user }: { user: any }) {
 
   const fetchData = async () => {
     try {
+      const tokenStr = localStorage.getItem('medicare_token');
       const [aptRes, invRes, qRes] = await Promise.all([
-        fetch('http://localhost:5000/api/hospital/appointments', { headers: { 'Authorization': `Bearer ${token}` } }),
-        fetch('http://localhost:5000/api/hospital/invoices', { headers: { 'Authorization': `Bearer ${token}` } }),
-        fetch('http://localhost:5000/api/hospital/queues/all', { headers: { 'Authorization': `Bearer ${token}` } })
+        fetch('http://localhost:5000/api/hospital/appointments', { headers: { 'Authorization': `Bearer ${tokenStr}` } }),
+        fetch('http://localhost:5000/api/hospital/invoices', { headers: { 'Authorization': `Bearer ${tokenStr}` } }),
+        fetch('http://localhost:5000/api/hospital/queues/all', { headers: { 'Authorization': `Bearer ${tokenStr}` } })
       ]);
       
       if (aptRes.ok) setAppointments(await aptRes.json());

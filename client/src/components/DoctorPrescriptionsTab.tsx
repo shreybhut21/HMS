@@ -30,9 +30,9 @@ export function DoctorPrescriptionsTab() {
   };
 
   const filteredPrescriptions = prescriptions.filter(p => 
-    p.patientName.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    p.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    p.phone.includes(searchTerm)
+    p.patientName?.toLowerCase().includes(searchTerm.toLowerCase()) || 
+    String(p.id).toLowerCase().includes(searchTerm.toLowerCase()) ||
+    p.phone?.includes(searchTerm)
   );
 
   return (
@@ -203,18 +203,18 @@ export function DoctorPrescriptionsTab() {
                     <ActivitySquare size={36} />
                   </div>
                   <div>
-                    <h1 style={{ fontSize: '1.75rem', fontWeight: 800, color: 'var(--primary-700)', letterSpacing: '-0.5px' }}>MediCare City Hospital</h1>
+                    <h1 style={{ fontSize: '1.75rem', fontWeight: 800, color: 'var(--primary-700)', letterSpacing: '-0.5px' }}>{selectedPrescription.hospital_name || 'MediCare Hospital'}</h1>
                     <p style={{ color: 'var(--gray-500)', fontSize: '0.875rem', display: 'flex', alignItems: 'center', gap: '0.25rem', marginTop: '0.25rem' }}>
-                      <MapPin size={14} /> 123 Healthcare Ave, Medical District, City 400001
+                      <MapPin size={14} /> {selectedPrescription.hospital_address || 'Address not provided'}
                     </p>
                   </div>
                 </div>
                 <div style={{ textAlign: 'right' }}>
-                  <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--gray-900)' }}>Dr. Amit Shah</h2>
-                  <p style={{ color: 'var(--gray-600)', fontSize: '0.875rem', fontWeight: 500 }}>MBBS, MD (General Medicine)</p>
-                  <p style={{ color: 'var(--gray-500)', fontSize: '0.875rem' }}>Reg No: MCI-12345</p>
+                  <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--gray-900)' }}>Dr. {selectedPrescription.doctor_name || 'Unknown Doctor'}</h2>
+                  {selectedPrescription.doctor_qualification && <p style={{ color: 'var(--gray-600)', fontSize: '0.875rem', fontWeight: 500 }}>{selectedPrescription.doctor_qualification}</p>}
+                  {selectedPrescription.medical_registration_number && <p style={{ color: 'var(--gray-500)', fontSize: '0.875rem' }}>Reg No: {selectedPrescription.medical_registration_number}</p>}
                   <p style={{ color: 'var(--gray-500)', fontSize: '0.875rem', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '0.25rem', marginTop: '0.25rem' }}>
-                    <Phone size={14} /> +91 98765 00000
+                    <Phone size={14} /> {selectedPrescription.doctor_phone || selectedPrescription.hospital_phone || 'N/A'}
                   </p>
                 </div>
               </div>
@@ -227,11 +227,13 @@ export function DoctorPrescriptionsTab() {
                 </div>
                 <div>
                   <p style={{ fontSize: '0.75rem', color: 'var(--gray-500)', textTransform: 'uppercase', fontWeight: 600 }}>Age / Gender</p>
-                  <p style={{ fontWeight: 600, color: 'var(--gray-900)' }}>{selectedPrescription.age} Yrs / {selectedPrescription.gender}</p>
+                  <p style={{ fontWeight: 600, color: 'var(--gray-900)' }}>
+                    {selectedPrescription.date_of_birth ? Math.floor((new Date().getTime() - new Date(selectedPrescription.date_of_birth).getTime()) / 31557600000) : 'N/A'} Yrs / {selectedPrescription.gender || 'Unknown'}
+                  </p>
                 </div>
                 <div>
                   <p style={{ fontSize: '0.75rem', color: 'var(--gray-500)', textTransform: 'uppercase', fontWeight: 600 }}>Date</p>
-                  <p style={{ fontWeight: 600, color: 'var(--gray-900)' }}>{selectedPrescription.date}</p>
+                  <p style={{ fontWeight: 600, color: 'var(--gray-900)' }}>{new Date(selectedPrescription.created_at).toLocaleDateString()}</p>
                 </div>
                 <div>
                   <p style={{ fontSize: '0.75rem', color: 'var(--gray-500)', textTransform: 'uppercase', fontWeight: 600 }}>Prescription ID</p>
@@ -301,7 +303,7 @@ export function DoctorPrescriptionsTab() {
                 
                 <div style={{ textAlign: 'center' }}>
                   <div style={{ borderBottom: '1px dashed var(--gray-400)', width: '200px', marginBottom: '0.5rem', paddingBottom: '0.5rem' }}>
-                    <span style={{ fontFamily: '"Brush Script MT", cursive', fontSize: '1.5rem', color: 'var(--primary-800)' }}>Dr. Amit Shah</span>
+                    <span style={{ fontFamily: '"Brush Script MT", cursive', fontSize: '1.5rem', color: 'var(--primary-800)' }}>Dr. {selectedPrescription.doctor_name || 'Signature'}</span>
                   </div>
                   <p style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--gray-900)' }}>Doctor's Signature</p>
                 </div>

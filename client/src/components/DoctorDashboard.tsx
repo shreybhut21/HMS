@@ -7,6 +7,8 @@ import { DoctorAppointmentsTab } from './DoctorAppointmentsTab';
 import { DoctorPatientsTab } from './DoctorPatientsTab';
 import { DoctorPrescriptionsTab } from './DoctorPrescriptionsTab';
 
+import { DoctorProfileTab } from './DoctorProfileTab';
+
 type Tab = 'dashboard' | 'appointments' | 'patients' | 'prescriptions' | 'records' | 'profile' | 'settings';
 
 export function DoctorDashboard() {
@@ -28,7 +30,7 @@ export function DoctorDashboard() {
       case 'records':
         return <div><h2 style={{ fontSize: '1.5rem', fontWeight: 600 }}>Medical Records</h2><p>Records access coming soon.</p></div>;
       case 'profile':
-        return <div><h2 style={{ fontSize: '1.5rem', fontWeight: 600 }}>Profile</h2><p>Profile settings coming soon.</p></div>;
+        return <DoctorProfileTab />;
       case 'settings':
         return <div><h2 style={{ fontSize: '1.5rem', fontWeight: 600 }}>Settings</h2><p>System settings coming soon.</p></div>;
       default:

@@ -8,6 +8,8 @@ import { DoctorDashboard } from './components/DoctorDashboard';
 import { ReceptionistDashboard } from './components/ReceptionistDashboard';
 import { NurseDashboard } from './components/NurseDashboard';
 import { PharmacistDashboard } from './components/PharmacistDashboard';
+import { PublicInvoice } from './components/PublicInvoice';
+import { PublicPrescription } from './components/PublicPrescription';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 
 function ProtectedDashboard() {
@@ -89,6 +91,9 @@ function AppContent() {
         <Route path="/nurse-dashboard" element={<NurseDashboard />} />
         <Route path="/pharmacist-dashboard" element={<PharmacistDashboard />} />
         <Route path="/shrey" element={<ProtectedAdmin />} />
+        {/* Public Pages */}
+        <Route path="/invoice/:id" element={<PublicInvoice />} />
+        <Route path="/prescription/:id" element={<PublicPrescription />} />
       </Routes>
     </div>
   );

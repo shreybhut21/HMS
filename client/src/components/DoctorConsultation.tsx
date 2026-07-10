@@ -15,12 +15,14 @@ interface MedicineRow {
 
 export function DoctorConsultation({ patient, onClose, onComplete, user }: { patient: any, onClose: () => void, onComplete?: () => void, user: any }) {
   // Clinical Notes
-  const [symptoms, setSymptoms] = useState('Fever, headache and body pain for 3 days.');
-  const [diagnosis, setDiagnosis] = useState('Viral Fever');
-  const [notes, setNotes] = useState('Patient advised rest and hydration.');
-  const [advice, setAdvice] = useState('Drink plenty of water\nTake adequate rest\nAvoid oily food');
+  const [symptoms, setSymptoms] = useState('');
+  const [diagnosis, setDiagnosis] = useState('');
+  const [notes, setNotes] = useState('');
+  const [advice, setAdvice] = useState('');
+  const [consultationFee, setConsultationFee] = useState('');
   const [followUp, setFollowUp] = useState(false);
   const [followUpDate, setFollowUpDate] = useState('');
+  const [showFullHistory, setShowFullHistory] = useState(false);
   
   const [clinicProfile, setClinicProfile] = useState<any>(null);
   const [pastPrescriptions, setPastPrescriptions] = useState<any[]>([]);
@@ -56,9 +58,7 @@ export function DoctorConsultation({ patient, onClose, onComplete, user }: { pat
   }, [patient?.patient_id]);
   
   // Rx Builder State
-  const [medicines, setMedicines] = useState<MedicineRow[]>([
-    { id: '1', name: 'Paracetamol', dosage: '500mg', frequency: '1-0-1', duration: '5 Days', instructions: 'After Food' }
-  ]);
+  const [medicines, setMedicines] = useState<MedicineRow[]>([]);
   
   const [curMedName, setCurMedName] = useState('');
   const [curDosage, setCurDosage] = useState('');
@@ -104,6 +104,7 @@ export function DoctorConsultation({ patient, onClose, onComplete, user }: { pat
         diagnosis,
         advice: advice || notes,
         follow_up_date: followUpDate || null,
+        consultation_fee: Number(consultationFee) || 0,
         status: 'Completed',
         medicines: medicines.filter(m => m.name).map(m => ({
           medicine_name: m.name,
@@ -214,7 +215,12 @@ export function DoctorConsultation({ patient, onClose, onComplete, user }: { pat
             <div style={{ flex: 1 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                 <div>
-                  <h2 style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--gray-900)' }}>{patient?.patient_name || 'Walk-in Patient'}</h2>
+                  <h2 style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--gray-900)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    {patient?.patient_name || 'Walk-in Patient'}
+                    {(patient?.patient_email?.includes('walkin_') || patient?.problem_description?.toLowerCase() === 'walk-in') && (
+                      <span style={{ fontSize: '0.75rem', background: '#DBEAFE', color: '#1D4ED8', padding: '0.2rem 0.5rem', borderRadius: '4px', fontWeight: 600 }}>Walk-in</span>
+                    )}
+                  </h2>
                   <p style={{ color: 'var(--gray-500)', fontSize: '0.875rem', marginTop: '0.25rem' }}>{patient?.gender || 'Unknown'} • Blood Group: <span style={{ color: 'var(--red-600)', fontWeight: 600 }}>{patient?.blood_group || 'Unknown'}</span></p>
                   <p style={{ color: 'var(--gray-500)', fontSize: '0.875rem', marginTop: '0.25rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}><Phone size={12} /> {patient?.phone || 'No phone provided'}</p>
                 </div>
@@ -242,7 +248,19 @@ export function DoctorConsultation({ patient, onClose, onComplete, user }: { pat
 
           {/* MEDICAL HISTORY ACCORDION (Simplified) */}
           <div className="card" style={{ padding: '1.5rem' }}>
-            <h3 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--gray-900)', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Clock size={18} /> Previous History</h3>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <h3 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--gray-900)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <Clock size={18} /> Previous History
+              </h3>
+              <button 
+                type="button" 
+                onClick={() => setShowFullHistory(true)} 
+                className="btn-secondary" 
+                style={{ padding: '0.4rem 0.75rem', fontSize: '0.75rem', borderRadius: '6px', fontWeight: 600 }}
+              >
+                View Full History
+              </button>
+            </div>
             
             {pastPrescriptions.length > 0 ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
@@ -286,6 +304,10 @@ export function DoctorConsultation({ patient, onClose, onComplete, user }: { pat
             <div>
               <label className="form-label">Clinical Notes</label>
               <textarea className="form-input" rows={2} value={notes} onChange={e => setNotes(e.target.value)}></textarea>
+            </div>
+            <div>
+              <label className="form-label">Consultation Fee (₹) <span style={{fontSize: '0.75rem', fontWeight: 'normal', color: 'var(--gray-500)'}}>(Only visible to Reception)</span></label>
+              <input type="number" className="form-input" placeholder="e.g. 500" value={consultationFee} onChange={e => setConsultationFee(e.target.value)} />
             </div>
           </div>
 
@@ -505,15 +527,11 @@ export function DoctorConsultation({ patient, onClose, onComplete, user }: { pat
               
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', borderTop: '1px solid var(--gray-200)', paddingTop: '1rem', marginBottom: '1rem' }}>
                 <div style={{ width: '80px', height: '80px', background: 'var(--gray-100)', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid var(--gray-300)' }}>
-                  {/* Mock QR Code */}
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '2px', width: '40px', height: '40px' }}>
-                    {Array.from({ length: 16 }).map((_, i) => <div key={i} style={{ background: Math.random() > 0.5 ? '#000' : 'transparent' }}></div>)}
-                  </div>
+                  {/* Space for Clinic Stamp/QR */}
                 </div>
                 <div style={{ textAlign: 'center' }}>
                   <div style={{ width: '150px', borderBottom: '1px solid #000', marginBottom: '0.5rem' }}>
-                    {/* Mock Signature line */}
-                    <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 30'%3E%3Cpath d='M10 20 Q 30 5 50 20 T 90 15' fill='none' stroke='black' stroke-width='2'/%3E%3C/svg%3E" alt="Signature" style={{ width: '100%', opacity: 0.6 }} />
+                    {/* Empty space for manual signature */}
                   </div>
                   <p style={{ fontWeight: 700, fontSize: '0.875rem' }}>Dr. {user?.name}</p>
                   <p style={{ fontSize: '0.75rem', color: 'var(--gray-500)' }}>Signature & Stamp</p>
@@ -532,6 +550,127 @@ export function DoctorConsultation({ patient, onClose, onComplete, user }: { pat
         </div>
 
       </div>
+      {/* Full History Modal */}
+      {showFullHistory && (
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 100000,
+          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem'
+        }}>
+          <div style={{
+            background: 'white', borderRadius: '12px', width: '100%', maxWidth: '900px', height: '90vh',
+            display: 'flex', flexDirection: 'column', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)'
+          }}>
+            <div style={{ padding: '1.5rem', borderBottom: '1px solid var(--gray-200)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <h2 style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--gray-900)' }}>Comprehensive Patient History</h2>
+                <p style={{ color: 'var(--gray-500)', fontSize: '0.875rem' }}>{patient?.patient_name} • ID: {patient?.patient_id}</p>
+              </div>
+              <button onClick={() => setShowFullHistory(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0.5rem', color: 'var(--gray-500)' }}>
+                <X size={24} />
+              </button>
+            </div>
+            
+            <div style={{ flex: 1, overflowY: 'auto', padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '2rem', background: 'var(--gray-50)' }}>
+              
+              {/* Patient Vitals & Medical Profile */}
+              <div style={{ background: 'white', padding: '1.5rem', borderRadius: '8px', border: '1px solid var(--gray-200)' }}>
+                <h3 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--gray-900)', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <Activity size={18} color="var(--primary-600)"/> Vitals & Medical Profile
+                </h3>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1.5rem' }}>
+                  <div>
+                    <p style={{ fontSize: '0.75rem', color: 'var(--gray-500)', fontWeight: 600, textTransform: 'uppercase' }}>Height</p>
+                    <p style={{ fontWeight: 600, color: 'var(--gray-900)', marginTop: '0.25rem' }}>{patient?.height ? `${patient.height} cm` : 'Not recorded'}</p>
+                  </div>
+                  <div>
+                    <p style={{ fontSize: '0.75rem', color: 'var(--gray-500)', fontWeight: 600, textTransform: 'uppercase' }}>Weight</p>
+                    <p style={{ fontWeight: 600, color: 'var(--gray-900)', marginTop: '0.25rem' }}>{patient?.weight ? `${patient.weight} kg` : 'Not recorded'}</p>
+                  </div>
+                  <div>
+                    <p style={{ fontSize: '0.75rem', color: 'var(--gray-500)', fontWeight: 600, textTransform: 'uppercase' }}>BMI</p>
+                    <p style={{ fontWeight: 600, color: 'var(--gray-900)', marginTop: '0.25rem' }}>
+                      {(patient?.height && patient?.weight) ? 
+                        (patient.weight / Math.pow(patient.height / 100, 2)).toFixed(1) : 'N/A'
+                      }
+                    </p>
+                  </div>
+                  <div>
+                    <p style={{ fontSize: '0.75rem', color: 'var(--gray-500)', fontWeight: 600, textTransform: 'uppercase' }}>Blood Group</p>
+                    <p style={{ fontWeight: 600, color: 'var(--gray-900)', marginTop: '0.25rem' }}>{patient?.blood_group || 'Unknown'}</p>
+                  </div>
+                </div>
+                
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem', marginTop: '1.5rem', paddingTop: '1.5rem', borderTop: '1px solid var(--gray-100)' }}>
+                  <div>
+                    <p style={{ fontSize: '0.75rem', color: 'var(--gray-500)', fontWeight: 600, textTransform: 'uppercase' }}>Known Allergies</p>
+                    <p style={{ fontWeight: 500, color: 'var(--gray-800)', marginTop: '0.25rem' }}>{patient?.allergies || 'None recorded'}</p>
+                  </div>
+                  <div>
+                    <p style={{ fontSize: '0.75rem', color: 'var(--gray-500)', fontWeight: 600, textTransform: 'uppercase' }}>Chronic Diseases</p>
+                    <p style={{ fontWeight: 500, color: 'var(--gray-800)', marginTop: '0.25rem' }}>{patient?.chronic_diseases || 'None recorded'}</p>
+                  </div>
+                  <div style={{ gridColumn: '1 / -1' }}>
+                    <p style={{ fontSize: '0.75rem', color: 'var(--gray-500)', fontWeight: 600, textTransform: 'uppercase' }}>Past Medical History</p>
+                    <p style={{ fontWeight: 500, color: 'var(--gray-800)', marginTop: '0.25rem' }}>{patient?.medical_history || 'None recorded'}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Full Past Prescriptions */}
+              <div style={{ background: 'white', padding: '1.5rem', borderRadius: '8px', border: '1px solid var(--gray-200)' }}>
+                <h3 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--gray-900)', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <FileText size={18} color="var(--primary-600)"/> Past Prescriptions ({pastPrescriptions.length})
+                </h3>
+                
+                {pastPrescriptions.length > 0 ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+                    {pastPrescriptions.map((pres, idx) => (
+                      <div key={pres.id} style={{ display: 'flex', gap: '2rem', borderBottom: idx < pastPrescriptions.length - 1 ? '1px solid var(--gray-200)' : 'none', paddingBottom: idx < pastPrescriptions.length - 1 ? '2rem' : '0' }}>
+                        
+                        <div style={{ width: '120px', flexShrink: 0 }}>
+                          <p style={{ fontSize: '0.75rem', color: 'var(--gray-500)', fontWeight: 600, textTransform: 'uppercase' }}>Visit Date</p>
+                          <p style={{ fontWeight: 700, color: 'var(--gray-900)', marginTop: '0.25rem' }}>
+                            {new Date(pres.created_at).toLocaleDateString()}
+                          </p>
+                        </div>
+                        
+                        <div style={{ flex: 1 }}>
+                          <p style={{ fontSize: '0.75rem', color: 'var(--gray-500)', fontWeight: 600, textTransform: 'uppercase' }}>Diagnosis & Advice</p>
+                          <p style={{ fontWeight: 700, color: 'var(--gray-900)', marginTop: '0.25rem' }}>{pres.diagnosis}</p>
+                          {pres.advice && <p style={{ fontSize: '0.875rem', color: 'var(--gray-600)', marginTop: '0.5rem' }}>{pres.advice}</p>}
+                        </div>
+                        
+                        <div style={{ flex: 1 }}>
+                          <p style={{ fontSize: '0.75rem', color: 'var(--gray-500)', fontWeight: 600, textTransform: 'uppercase', marginBottom: '0.5rem' }}>Prescribed Medications</p>
+                          {pres.medicines && pres.medicines.length > 0 ? (
+                            <ul style={{ margin: 0, paddingLeft: '1.2rem', color: 'var(--gray-700)', fontSize: '0.875rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                              {pres.medicines.map((m: any) => (
+                                <li key={m.id}>
+                                  <strong>{m.medicine_name}</strong> {m.dosage && `(${m.dosage})`}
+                                  <br/>
+                                  <span style={{ fontSize: '0.75rem', color: 'var(--gray-500)' }}>
+                                    {m.frequency} • {m.duration} {m.instructions ? `• ${m.instructions}` : ''}
+                                  </span>
+                                </li>
+                              ))}
+                            </ul>
+                          ) : (
+                            <p style={{ fontSize: '0.875rem', color: 'var(--gray-500)' }}>No medicines prescribed.</p>
+                          )}
+                        </div>
+
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p style={{ color: 'var(--gray-500)' }}>No past prescriptions found for this patient.</p>
+                )}
+              </div>
+
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
